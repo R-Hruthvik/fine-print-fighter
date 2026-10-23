@@ -1,0 +1,54 @@
+{
+  "id": "subscription-cancel",
+  "name": "Subscription you cannot cancel",
+  "extractionSchema": [
+    "company",
+    "plan",
+    "price",
+    "signupDate",
+    "billingDates",
+    "cancellationAttempts",
+    "companyResponse",
+    "chargesAfterCancellation",
+    "currency"
+  ],
+  "searchPlan": {
+    "queries": [
+      "{country} cancellation auto-renewal subscription consumer protection rule",
+      "{company} cancellation policy terms of service refund policy",
+      "{company} subscription cancellation complaint similar resolved case"
+    ],
+    "preferredDomains": []
+  },
+  "evaluationPrompt": "Determine whether the company made cancellation unreasonably difficult compared to signup. Check whether charges were taken after a valid cancellation attempt. Check whether the company's own policy promises something it failed to do. Return findings with source IDs and supporting passages.",
+  "compensationLogic": "Refund amounts come from the charges-after-cancellation documented in the facts and any refund rule found in the sources; no amounts are estimated from memory.",
+  "letterTemplate": "Timeline of cancellation attempts, the rule and policy cited, a demand to cancel and refund specific charges, and a deadline.",
+  "escalationLadder": {
+    "IN": [
+      "Company support",
+      "Bank or payment-provider dispute / chargeback",
+      "Consumer regulator (e.g. Department of Consumer Affairs / CCPA)",
+      "Consumer court or small claims"
+    ],
+    "EU": [
+      "Company support",
+      "Bank or payment-provider dispute / chargeback",
+      "National consumer protection authority / European Consumer Centre",
+      "Consumer court or small claims"
+    ],
+    "US": [
+      "Company support",
+      "Bank or payment-provider dispute / chargeback",
+      "Federal Trade Commission or state attorney general",
+      "Consumer court or small claims"
+    ]
+  },
+  "version": "0.2.0",
+  "lastReviewed": null,
+  "requiredFacts": [
+    "company",
+    "signupDate",
+    "cancellationAttempts",
+    "chargesAfterCancellation"
+  ]
+}

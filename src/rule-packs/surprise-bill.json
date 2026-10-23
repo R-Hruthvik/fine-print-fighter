@@ -1,0 +1,54 @@
+{
+  "id": "surprise-bill",
+  "name": "Surprise bill or fee",
+  "extractionSchema": [
+    "company",
+    "billDate",
+    "amount",
+    "lineItems",
+    "disputedItem",
+    "quotedOrPromised",
+    "contractOrPlanTerms",
+    "sector",
+    "currency"
+  ],
+  "searchPlan": {
+    "queries": [
+      "{country} billing transparency unfair fee rule {sector} regulator",
+      "{company} tariff fee schedule plan terms {sector}",
+      "{company} surprise fee billing complaint similar resolved case"
+    ],
+    "preferredDomains": []
+  },
+  "evaluationPrompt": "Determine whether the disputed charge matches the published tariff or contract. Check whether the fee was disclosed before purchase. Check whether a sector regulator rule covers notice or caps. Return findings with source IDs and supporting passages.",
+  "compensationLogic": "Refund comes from the disputed amount in the facts and any fee cap or refund rule found in the sources; no amounts are estimated from memory.",
+  "letterTemplate": "The disputed charge, the mismatch with the quoted price or tariff with citation, the amount requested back, and a deadline.",
+  "escalationLadder": {
+    "IN": [
+      "Company billing team",
+      "Internal grievance officer / nodal officer where required",
+      "Sector regulator or ombudsman",
+      "Consumer court"
+    ],
+    "EU": [
+      "Company billing team",
+      "Sector regulator or national enforcement body",
+      "European Consumer Centre / alternative dispute resolution",
+      "Consumer court or small claims"
+    ],
+    "US": [
+      "Company billing team",
+      "Sector regulator (e.g. FCC, CFPB, state utility commission)",
+      "Better Business Bureau / state attorney general",
+      "Consumer court or small claims"
+    ]
+  },
+  "version": "0.2.0",
+  "lastReviewed": null,
+  "requiredFacts": [
+    "company",
+    "disputedItem",
+    "quotedOrPromised",
+    "sector"
+  ]
+}

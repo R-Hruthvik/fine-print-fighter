@@ -1,0 +1,58 @@
+{
+  "id": "flight-delay",
+  "name": "Flight delay or cancellation",
+  "extractionSchema": [
+    "airline",
+    "flightNumber",
+    "date",
+    "departureAirport",
+    "arrivalAirport",
+    "scheduledTime",
+    "actualTime",
+    "delayHours",
+    "reasonGiven",
+    "ticketPrice",
+    "offeredRemedy",
+    "currency"
+  ],
+  "searchPlan": {
+    "queries": [
+      "{country} passenger rights flight delay compensation regulation",
+      "{airline} delay compensation policy conditions of carriage",
+      "{airline} flight {flightNumber} delay {date} passenger claim similar resolved case"
+    ],
+    "preferredDomains": []
+  },
+  "evaluationPrompt": "Determine whether the delay length and route distance qualify for compensation or a refund under the applicable passenger-rights rule. Assess whether the airline's stated reason (weather, technical, strike) holds up as an exemption. Check whether the airline offered what its own policy promises (care, rebooking, refund). Return findings with source IDs and supporting passages.",
+  "compensationLogic": "Compensation amounts and rules come from the retrieved passenger-rights regulation for the selected country; no amounts are estimated from memory.",
+  "letterTemplate": "Facts of the flight, the rule that applies with citation, the airline's own policy with citation, the specific remedy requested, a reply deadline, and the next step if ignored.",
+  "escalationLadder": {
+    "IN": [
+      "Airline customer relations",
+      "Directorate General of Civil Aviation (DGCA) air grievance portal",
+      "AirSAT / consumer dispute redressal forum",
+      "Consumer court or small claims"
+    ],
+    "EU": [
+      "Airline customer relations",
+      "National enforcement body (aviation regulator) of the member state",
+      "European Consumer Centre (ECC-Net) / alternative dispute resolution",
+      "Small claims or national court"
+    ],
+    "US": [
+      "Airline customer relations",
+      "U.S. Department of Transportation aviation consumer protection complaint",
+      "Alternative dispute resolution where available",
+      "Small claims court"
+    ]
+  },
+  "version": "0.2.0",
+  "lastReviewed": null,
+  "requiredFacts": [
+    "departureAirport",
+    "arrivalAirport",
+    "date",
+    "reasonGiven",
+    "delayHours"
+  ]
+}
