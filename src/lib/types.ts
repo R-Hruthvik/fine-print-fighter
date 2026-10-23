@@ -70,6 +70,17 @@ export interface PipelineResult {
   unverified: string[];
   conflicts: string[];
   warnings: string[];
+  rebuttalLab: {
+    objections: {
+      id: string;
+      hypothesis: string;
+      supportingPassage: string;
+      evidenceNeeded: string[];
+      status: "unresolved" | "document-provided" | "unsupported";
+      sourceIds: string[];
+    }[];
+    actions: { tool: string; summary: string; sourceIds: string[]; durationMs: number }[];
+  };
   country: Country;
   run: {
     requestId: string;

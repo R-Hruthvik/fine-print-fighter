@@ -10,6 +10,7 @@ type FormState = {
   country: Country;
   caseType: string;
   documentText: string;
+  companyResponse: string;
   userName: string;
   desiredOutcome: string;
   language: string;
@@ -17,7 +18,7 @@ type FormState = {
 };
 
 const DEFAULT_FORM: FormState = {
-  country: "IN", caseType: "flight-delay", documentText: "", userName: "",
+  country: "IN", caseType: "subscription-cancel", documentText: "", companyResponse: "", userName: "",
   desiredOutcome: "", language: "English", replyDeadline: "14 days",
 };
 
@@ -29,6 +30,8 @@ export function FighterApp() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [additionalDocuments, setAdditionalDocuments] = useState<{ id: string; label: string; text: string }[]>([]);
+  const [resultRevision, setResultRevision] = useState(0);
   const [fileName, setFileName] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<AbortController | null>(null);
@@ -63,9 +66,29 @@ export function FighterApp() {
 
   async function analyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    await submitAnalysis([]);
+  }
+
+  async function recheck(documents: { id: string; label: string; text: string }[]) {
+    const merged = [...additionalDocuments];
+    for (const document of documents) {
+      const index = merged.findIndex((existing) => existing.id === document.id);
+      if (index < 0) merged.push(document);
+      else merged[index] = document;
+    }
+    if (merged.reduce((total, document) => total + document.text.length, 0) > 30_000) {
+      setError("The combined additional evidence exceeds 30,000 characters. Shorten the added document before rechecking.");
+      return;
+    }
+    await submitAnalysis(merged);
+  }
+
+  async function submitAnalysis(documents: { id: string; label: string; text: string }[]) {
     if (requestRef.current) return;
     const validation = validateDocument(form.documentText);
     if (validation) { setError(validation); return; }
+    if (!form.companyResponse.trim()) { setError("Paste the company’s rejection or reply so the Rebuttal Lab can investigate its explanation."); return; }
+    if (form.companyResponse.length > 12_000) { setError("The company response exceeds 12,000 characters. Shorten it before analyzing."); return; }
     if (!CASE_TYPES.some((pack) => pack.id === form.caseType) || !COUNTRIES.some((country) => country.code === form.country)) {
       setError("Choose a supported jurisdiction and case type.");
       return;
@@ -79,7 +102,7 @@ export function FighterApp() {
     try {
       const response = await fetch("/api/extract", {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
-        body: JSON.stringify({ ...form, packId: form.caseType, userName: form.userName || undefined, desiredOutcome: form.desiredOutcome || undefined }),
+        body: JSON.stringify({ ...form, additionalDocuments: documents, packId: form.caseType, userName: form.userName || undefined, desiredOutcome: form.desiredOutcome || undefined }),
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) {
@@ -89,7 +112,11 @@ export function FighterApp() {
       if (!data?.score || !Array.isArray(data.findings) || !Array.isArray(data.sources) || typeof data.letter !== "string") {
         throw new Error("The analysis response was incomplete. Your text is still here; please try again.");
       }
-      if (!controller.signal.aborted) setResult(data as PipelineResult);
+      if (!controller.signal.aborted) {
+        setAdditionalDocuments(documents);
+        setResult(data as PipelineResult);
+        setResultRevision((previous) => previous + 1);
+      }
     } catch (caught) {
       if (controller.signal.aborted) {
         if (controller.signal.reason === "timeout") setError("The analysis took too long. Your text is still here; please try again.");
@@ -109,11 +136,12 @@ export function FighterApp() {
     setError(null);
     setNotice(null);
     setFileName(null);
+    setAdditionalDocuments([]);
     if (fileRef.current) fileRef.current.value = "";
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus"><CaseResult result={result} onReset={reset} /></div>;
+  if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus"><CaseResult key={resultRevision} result={result} onReset={reset} onRecheck={recheck} rechecking={running} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} /></div>;
 
   return (
     <div className="intake-layout screen-only">
@@ -143,7 +171,10 @@ export function FighterApp() {
             <input ref={fileRef} type="file" accept=".txt,.md,text/plain,text/markdown" className="sr-only" tabIndex={-1} aria-label="Upload a text document" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
             <textarea id="document-text" className="document-input" value={form.documentText} onChange={(event) => { update("documentText", event.target.value); setFileName(null); }} aria-describedby="document-hint document-count" placeholder="Paste the bill, notice, or email here. Include dates, charges, and the company’s explanation where available." required />
             <div className="document-meta"><span id="document-hint">{fileName ?? "Text only · No PDF or image support yet"}</span><span id="document-count" className={form.documentText.length > MAX_DOCUMENT_CHARACTERS ? "over-limit" : ""}>{form.documentText.length.toLocaleString("en-IN")} / 30,000 characters</span></div>
-            <div className="sample-row"><span>Just looking around?</span><button className="text-button" type="button" onClick={() => { setForm({ ...DEFAULT_FORM, caseType: "subscription-cancel", documentText: SAMPLE }); setFileName(null); setError(null); setNotice("Fictional sample loaded. Analyze it to run a real research request."); }}>Try a fictional example <span aria-hidden="true">→</span></button></div>
+            <label htmlFor="company-response" className="company-response-label">Company’s rejection or explanation <span className="required-note">Optional</span></label>
+            <textarea id="company-response" className="company-response-input" value={form.companyResponse} onChange={(event) => update("companyResponse", event.target.value)} aria-describedby="company-response-hint" placeholder="Paste the company’s actual reply separately. The Rebuttal Lab will investigate its explanation and identify what evidence is missing." required />
+            <p className="field-hint" id="company-response-hint">Use the exact reply where possible. Up to 12,000 characters. An explanation is not proof that the company is right.</p>
+            <div className="sample-row"><span>Just looking around?</span><button className="text-button" type="button" onClick={() => { setForm({ ...DEFAULT_FORM, caseType: "subscription-cancel", documentText: SAMPLE, companyResponse: "Your subscription remained active through the next billing date. Our records show that cancellation was not completed before the renewal. We cannot refund the charge." }); setFileName(null); setError(null); setNotice("Fictional sample loaded. The company reply is invented for the example; research results are retrieved live."); }}>Try a fictional example <span aria-hidden="true">→</span></button></div>
             <details className="preferences"><summary>Personalize your letter <span>Optional</span></summary><div className="form-grid preference-fields"><label htmlFor="user-name">Your name<input id="user-name" autoComplete="name" value={form.userName} maxLength={200} onChange={(event) => update("userName", event.target.value)} placeholder="Or leave a placeholder" /></label><label htmlFor="letter-language">Letter language<input id="letter-language" value="English" readOnly aria-describedby="language-hint" /><span className="field-hint" id="language-hint">English is supported in this version.</span></label><label htmlFor="desired-outcome" className="full-width">What would resolve this?<input id="desired-outcome" value={form.desiredOutcome} maxLength={2000} onChange={(event) => update("desiredOutcome", event.target.value)} placeholder="For example, cancel my plan and review the latest charge" /></label><label htmlFor="reply-deadline" className="full-width">Requested reply period<input id="reply-deadline" value={form.replyDeadline} maxLength={100} onChange={(event) => update("replyDeadline", event.target.value)} aria-describedby="reply-hint" /><span className="field-hint" id="reply-hint">A requested response time, not an established legal deadline.</span></label></div></details>
           </fieldset>
           {error ? <div className="feedback error-feedback" role="alert">{error}</div> : null}

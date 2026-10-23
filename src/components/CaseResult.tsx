@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import type { PipelineResult } from "@/lib/types";
 import { COUNTRIES } from "@/lib/packs";
 import { exportLetter, safeUrl } from "./workflow";
@@ -15,8 +15,37 @@ function Notes({ title, items }: { title: string; items: string[] }) {
   return <div className="analysis-notes"><h3>{title}</h3><ul>{items.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul></div>;
 }
 
-export function CaseResult({ result, onReset }: { result: PipelineResult; onReset: () => void }) {
+type AdditionalDocument = { id: string; label: string; text: string };
+export function CaseResult({ result, onReset, onRecheck, rechecking = false, recheckError, recheckNotice, onCancelRecheck }: {
+  result: PipelineResult;
+  onReset: () => void;
+  onRecheck: (additionalDocuments: AdditionalDocument[]) => Promise<void>;
+  rechecking?: boolean;
+  recheckError?: string | null;
+  recheckNotice?: string | null;
+  onCancelRecheck?: () => void;
+}) {
   const [letter, setLetter] = useState(result.letter);
+  const [selectedObjection, setSelectedObjection] = useState<string | null>(null);
+  const [evidenceLabel, setEvidenceLabel] = useState("");
+  const [evidenceText, setEvidenceText] = useState("");
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const rebuttalLab = result.rebuttalLab;
+
+  async function submitEvidence(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (rechecking || !selectedObjection) return;
+    if (!evidenceLabel.trim() || !evidenceText.trim()) {
+      setEvidenceError("Give this exhibit a label and paste the additional evidence.");
+      return;
+    }
+    if (evidenceText.length > 30_000) {
+      setEvidenceError("Additional evidence exceeds 30,000 characters. Shorten it before rechecking.");
+      return;
+    }
+    setEvidenceError(null);
+    await onRecheck([{ id: `${selectedObjection}-exhibit`, label: evidenceLabel.trim(), text: evidenceText }]);
+  }
   const sourceMap = new Map(result.sources.map((source) => [source.id, source]));
   const country = COUNTRIES.find((item) => item.code === result.country)?.label ?? "Selected jurisdiction";
   const unanswered = result.unanswered ?? [];
@@ -45,6 +74,28 @@ export function CaseResult({ result, onReset }: { result: PipelineResult; onRese
         <div className="results-layout">
           <div className="results-primary">
             <section className="strength-panel" aria-labelledby="strength-heading"><div className="strength-topline"><p className="eyebrow">Evidence assessment</p><span className="status-label">{noEvidence ? "Insufficient evidence" : `${result.score.coverage ?? "limited"} coverage`}</span></div><h2 id="strength-heading">{noEvidence ? "More evidence is needed." : `${result.score.rating[0].toUpperCase()}${result.score.rating.slice(1)} support for your case.`}</h2><ul>{result.score.reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul><p className="assessment-note">This rating describes available evidence. It does not predict a legal outcome.</p>{result.score.evidenceToGather.length ? <div className="gather-evidence"><h3>What to gather next</h3><ul>{result.score.evidenceToGather.map((item, index) => <li key={index}>{item}</li>)}</ul></div> : null}</section>
+
+            <section className="rebuttal-lab" aria-labelledby="rebuttal-heading">
+              <div className="rebuttal-heading"><div><p className="eyebrow">Investigate the explanation</p><h2 id="rebuttal-heading">Rebuttal Lab</h2></div><span className="status-label">Evidence, not assumptions</span></div>
+              <p className="section-description">Examine the company’s possible objection, see the missing evidence, and add a specific document to recheck the record. New evidence may support either side.</p>
+              {rebuttalLab?.objections.length ? <div className="objection-list">{rebuttalLab.objections.map((objection, index) => <article className="objection-card" key={objection.id}>
+                <div className="objection-topline"><span className="small-label">Objection {String(index + 1).padStart(2, "0")}</span><span className="status-label">{objection.status === "document-provided" ? "Document provided · review required" : objection.status === "unsupported" ? "Unsupported by the record" : "Evidence still needed"}</span></div>
+                <h3>{objection.hypothesis}</h3>
+                {objection.supportingPassage ? <div className="objection-excerpt"><span className="small-label">Supporting excerpt</span><blockquote>“{objection.supportingPassage}”</blockquote></div> : <p className="field-hint">No supporting excerpt has been established for this hypothesis.</p>}
+                {objection.sourceIds.length ? <div className="finding-sources">{objection.sourceIds.map((id) => sourceMap.has(id) ? <a key={id} href={`#source-${id}`}>Source [{id}]</a> : <span key={id}>Reference [{id}] · not in the research registry</span>)}</div> : null}
+                <div className="objection-gap"><h4>Evidence gap</h4>{objection.evidenceNeeded.length ? <ul>{objection.evidenceNeeded.map((item, itemIndex) => <li key={itemIndex}>{item}</li>)}</ul> : <p>No additional evidence request was identified. Review the supporting record before relying on this conclusion.</p>}</div>
+                <button className="secondary-button" type="button" aria-expanded={selectedObjection === objection.id} aria-controls="rebuttal-evidence-form" disabled={rechecking} onClick={() => { setSelectedObjection(objection.id); setEvidenceLabel(""); setEvidenceText(""); setEvidenceError(null); }}>Add evidence for this objection <span aria-hidden="true">→</span></button>
+              </article>)}</div> : <p className="empty-note">No grounded objection was identified. Add the company’s actual rejection or explanation when starting a case to investigate it.</p>}
+              {rebuttalLab?.actions.length ? <details className="investigation-actions" open><summary>Investigation actions <span>{rebuttalLab.actions.length}</span></summary><ol>{rebuttalLab.actions.map((action, index) => <li key={`${action.tool}-${index}`}><div className="action-topline"><strong>{action.tool.replaceAll("_", " ")}</strong><span>{(action.durationMs / 1000).toFixed(1)}s</span></div><p>{action.summary}</p>{action.sourceIds.length ? <div className="finding-sources">{action.sourceIds.map((id) => sourceMap.has(id) ? <a key={id} href={`#source-${id}`}>Source [{id}]</a> : <span key={id}>Reference [{id}]</span>)}</div> : null}</li>)}</ol></details> : null}
+              {selectedObjection ? <form id="rebuttal-evidence-form" className="rebuttal-evidence-form" onSubmit={submitEvidence} aria-busy={rechecking}>
+                <h3>What changes this objection?</h3><p className="field-hint">For: {rebuttalLab?.objections.find((item) => item.id === selectedObjection)?.hypothesis}</p>
+                <fieldset disabled={rechecking}><legend className="sr-only">Additional evidence for the selected objection</legend><label htmlFor="evidence-label">Exhibit label<input id="evidence-label" value={evidenceLabel} onChange={(event) => setEvidenceLabel(event.target.value)} maxLength={160} placeholder="For example, cancellation confirmation" required /></label><label htmlFor="additional-evidence">Additional document text<textarea id="additional-evidence" value={evidenceText} onChange={(event) => setEvidenceText(event.target.value)} placeholder="Paste the exact confirmation, policy excerpt, or reply. Include relevant dates and wording." aria-describedby="additional-evidence-hint" required /></label><p id="additional-evidence-hint" className="field-hint">{evidenceText.length.toLocaleString("en-IN")} / 30,000 characters. The recheck uses your original document, the company’s explanation, and your added evidence. It produces a new draft; export any edits you want to keep first.</p></fieldset>
+                {evidenceError || recheckError ? <p className="feedback error-feedback" role="alert">{evidenceError || recheckError}</p> : null}
+                {recheckNotice ? <p className="feedback notice-feedback" role="status">{recheckNotice}</p> : null}
+                {rechecking ? <p className="recheck-status" role="status"><span className="activity-indicator" aria-hidden="true" />Rechecking the supplied record. Your previous analysis stays visible until the revision is ready.</p> : null}
+                <div className="letter-actions"><button className="primary-button" type="submit" disabled={rechecking}>{rechecking ? "Recheck in progress" : "Recheck with this evidence"}<span aria-hidden="true">→</span></button>{rechecking ? <button className="secondary-button" type="button" onClick={onCancelRecheck}>Cancel recheck</button> : <button className="text-button" type="button" onClick={() => setSelectedObjection(null)}>Close evidence form</button>}</div>
+              </form> : null}
+            </section>
 
             {unanswered.length || unverified.length || conflicts.length || warnings.length ? <section className="result-section limitations-section" aria-labelledby="limitations-heading"><p className="eyebrow">Read before acting</p><h2 id="limitations-heading">What we couldn’t establish</h2><Notes title="Research limitations" items={warnings} /><Notes title="Unanswered questions" items={unanswered} /><Notes title="Conflicting evidence" items={conflicts} /><Notes title="Unsupported possibilities" items={unverified} /></section> : null}
 

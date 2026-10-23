@@ -1,6 +1,6 @@
 # Fine Print Fighter
 
-Turn a bill, notice, or company email into an evidence file, an editable complaint letter, and escalation options. Paste text or upload a UTF-8 `.txt`/`.md` document, select a dispute type and research jurisdiction, then review the sources and missing information before acting.
+Fine Print Fighter’s Rebuttal Lab stress-tests a consumer dispute against the company’s actual written response. It researches bounded policy questions, shows only objection passages it can match to retained sources, asks for a specific missing document, and re-runs the analysis when that evidence is supplied. It also creates an editable, cited response letter.
 
 This is an information tool, not legal advice. You review and send the letter yourself.
 
@@ -24,27 +24,29 @@ Set `NEBIUS_API_KEY` and `TAVILY_API_KEY` in `.env.local`. Set `NEMOTRON_MODEL` 
 - India, European Union, and United States as initial research scopes, with unresolved applicability questions shown explicitly.
 - Text input up to 30,000 characters and uploads/requests up to 256 KiB.
 - Grounded extraction, minimized queries, deduplicated research, passage checks, conservative evidence ratings, and visible conflicts and unanswered questions.
+- Rebuttal Lab with a bounded Nemotron function-call loop, allowlisted research/source/evidence tools, inspectable tool activity, and application-verified policy quotations.
+- Separate company-response intake and up to three added evidence documents. Rechecks run from the original inputs; supplied evidence is described as added, not proof of eligibility.
 - Deterministic English complaint letters that quote matching research passages and ask the company to confirm applicability. Citation records come from the application source registry.
 - Editable letters with current-text download and print/PDF export, cancellation, and clear-case controls.
 - Runtime request/provider validation, bounded model retries, per-call timeouts, a 120-second analysis deadline, and safe public errors.
 
 A matching passage proves traceability, not legal applicability or entitlement. Current applicability remains unreviewed, so the application cannot give a strong rating. Escalation entries are unreviewed pack suggestions, clearly labeled for verification. It does not calculate compensation entitlements; a documented disputed charge is shown only when its numeric value and currency are explicit.
 
-The under-90-second goal has not been benchmarked. Live-provider and jurisdiction audits remain release gates.
+The research tool choices are model-directed; the application executes only fixed functions with enumerated inputs and registered source IDs. The overall analysis is limited to 120 seconds, three tool turns, and six tool calls. A matching passage establishes traceability only. Live-provider latency, selected-model account availability, and jurisdiction applicability have not been verified.
 
 ## Architecture
 
 Next.js 16 App Router, React, TypeScript, and custom responsive CSS. Nebius Token Factory supplies the configured NVIDIA Nemotron model; Tavily supplies research results. No application database or saved case history.
 
-The server pipeline extracts facts, builds queries from pack templates, researches, evaluates and checks passages, constrains the evidence rating, describes the requested remedy, constructs the letter, and returns escalation suggestions. Only extraction and evaluation use the model; query planning, scoring, letter construction, and escalation are controlled in application code.
+The server pipeline extracts facts, builds initial queries from pack templates, researches and checks passages, then lets Nemotron select from a bounded set of investigation tools. The application validates final objection citations, constrains evidence ratings, constructs the letter, and returns escalation suggestions. No case history is persisted.
 
 ## Configuration
 
 | Variable | Purpose |
 | --- | --- |
 | `NEBIUS_API_KEY` | Server-side model key, required for analysis |
-| `NEBIUS_BASE_URL` | OpenAI-compatible endpoint; default `https://api.nebius.ai/v1` |
-| `NEMOTRON_MODEL` | Model identifier available to your account; verify availability before deployment |
+| `NEBIUS_BASE_URL` | OpenAI-compatible endpoint; default `https://api.tokenfactory.nebius.com/v1` |
+| `NEMOTRON_MODEL` | Model identifier available to your account; default `nvidia/Nemotron-3_5-Lightning` |
 | `TAVILY_API_KEY` | Server-side research key, required for analysis |
 | `ENABLE_STAGE_ROUTES` | Optional `true` enables development-only stage routes; always unavailable in production |
 
@@ -54,7 +56,7 @@ The app has a process-local budget of 12 analyses per minute and at most three c
 
 ## HTTP interface
 
-`POST /api/extract` runs the full pipeline. Required JSON fields: `documentText`, `packId`, `country` (`IN`, `EU`, `US`). Optional fields: `userName`, `desiredOutcome`, `language`, `replyDeadline`. Letters currently use the English template; another requested language returns an explicit warning.
+`POST /api/extract` runs the full pipeline. Required JSON fields: `documentText`, `companyResponse`, `packId`, `country` (`IN`, `EU`, `US`). Optional `additionalDocuments` accepts up to three `{id,label,text}` exhibits; a recheck resubmits the original documents and does not rely on a client-provided assessment. Other optional fields: `userName`, `desiredOutcome`, `language`, `replyDeadline`. Letters currently use the English template; another requested language returns an explicit warning.
 
 Errors contain `error`, `code`, `retryable`, and `requestId`. Responses use `Cache-Control: no-store`. Invalid input returns 400/413, budget limits 429, unavailable configuration 503, upstream failure 502, and timeout 504.
 
@@ -76,4 +78,4 @@ This runs ESLint, TypeScript checking, the complete regression suite, and a prod
 
 ## Remaining scope
 
-PDF/image OCR, accounts, payments, persistence, automatic sending, multilingual templates, independently reviewed applicability, sourced procedural escalation, and compensation formulas are not implemented. Live-provider accuracy, retention configuration, jurisdiction coverage, and latency need review before public release.
+PDF/image OCR, accounts, payments, persistence, automatic sending, multilingual templates, independently reviewed applicability, sourced procedural escalation, and compensation formulas are not implemented. Live-provider accuracy, selected-model tool-call behavior, retention configuration, jurisdiction coverage, and latency need review before public release.

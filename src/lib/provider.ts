@@ -21,10 +21,28 @@ export interface LLMCallOptions {
   signal?:AbortSignal;
 }
 
+export async function llmToolTurn(options: { messages: Record<string, unknown>[]; tools: Record<string, unknown>[]; signal?: AbortSignal }): Promise<Record<string, unknown>> {
+  const key=process.env.NEBIUS_API_KEY;
+  if (!key) throw new ProviderError('The analysis model is not configured on the server.',503,'CONFIGURATION_MISSING',false);
+  const base=(process.env.NEBIUS_BASE_URL || 'https://api.tokenfactory.nebius.com/v1').replace(/\/$/,'');
+  const timeout=options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(25_000)]) : AbortSignal.timeout(25_000);
+  try {
+    const response=await fetch(`${base}/chat/completions`,{method:'POST',signal:timeout,headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify({model:process.env.NEMOTRON_MODEL || 'nvidia/Nemotron-3_5-Lightning',temperature:0.1,max_tokens:1800,messages:options.messages,tools:options.tools,tool_choice:'auto'})});
+    if (!response.ok) throw new ProviderError('The investigation model is unavailable. Please try again later.',502,'MODEL_UNAVAILABLE',response.status===429 || response.status>=500);
+    const envelope:unknown=await response.json();
+    if (!isObject(envelope) || !Array.isArray(envelope.choices) || !isObject(envelope.choices[0]) || !isObject(envelope.choices[0].message)) throw new ProviderError('The investigation model returned an invalid response.',502,'INVALID_MODEL_RESPONSE',true);
+    return envelope.choices[0].message;
+  } catch (error) {
+    if (error instanceof ProviderError) throw error;
+    if (options.signal?.aborted) throw new ProviderError('The analysis deadline was exceeded.',504,'ANALYSIS_TIMEOUT',true);
+    throw new ProviderError('The investigation model could not be reached. Please try again.',502,'MODEL_UNAVAILABLE',true);
+  }
+}
+
 export async function llmJSON<T>(options:LLMCallOptions, schemaHint:string, validate:(value:unknown)=>value is T):Promise<T> {
   const key=process.env.NEBIUS_API_KEY;
   if (!key) throw new ProviderError('The analysis model is not configured on the server.',503,'CONFIGURATION_MISSING',false);
-  const base=(process.env.NEBIUS_BASE_URL || 'https://api.nebius.ai/v1').replace(/\/$/,'');
+  const base=(process.env.NEBIUS_BASE_URL || 'https://api.tokenfactory.nebius.com/v1').replace(/\/$/,'');
   const attempts=Math.min(2,Math.max(1,(options.retries ?? 1)+1));
   let repair=false;
   for (let attempt=0;attempt<attempts;attempt++) {
@@ -35,7 +53,7 @@ export async function llmJSON<T>(options:LLMCallOptions, schemaHint:string, vali
         method:'POST',signal,
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},
         body:JSON.stringify({
-          model:process.env.NEMOTRON_MODEL || 'nvidia/nemotron-4-340b-instruct',
+          model:process.env.NEMOTRON_MODEL || 'nvidia/Nemotron-3_5-Lightning',
           temperature:options.temperature ?? 0.1,max_tokens:options.maxTokens ?? 2500,
           messages:[{role:'system',content:options.system},{role:'user',content:options.user + (repair ? `\nYour last response was invalid. Return only JSON matching this schema: ${schemaHint}` : '')}],
           response_format:{type:'json_object'},

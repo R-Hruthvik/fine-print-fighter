@@ -12,6 +12,22 @@ export function parseCaseRequest(input: unknown) {
   const b = input as Record<string, unknown>;
   if (typeof b.documentText !== "string" || !b.documentText.trim()) throw new RequestError(400, "INVALID_REQUEST", "Please provide document text.");
   if (b.documentText.length > 30000) throw new RequestError(413, "INPUT_TOO_LARGE", "Document text exceeds 30,000 characters.");
+  const companyResponse = b.companyResponse === undefined ? "" : b.companyResponse;
+  if (typeof companyResponse !== "string") throw new RequestError(400, "INVALID_REQUEST", "Company response must be text.");
+  if (!companyResponse.trim()) throw new RequestError(400, "INVALID_REQUEST", "Provide the company’s response or rejection for the Rebuttal Lab.");
+  if (companyResponse.length > 12000) throw new RequestError(413, "INPUT_TOO_LARGE", "Company response exceeds 12,000 characters.");
+  const additionalDocuments = b.additionalDocuments === undefined ? [] : b.additionalDocuments;
+  if (!Array.isArray(additionalDocuments) || additionalDocuments.length > 3) throw new RequestError(400, "INVALID_REQUEST", "Provide up to three additional evidence documents.");
+  let additionalLength = 0;
+  const parsedDocuments = additionalDocuments.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new RequestError(400, "INVALID_REQUEST", "Each additional document must include an ID, label, and text.");
+    const doc = item as Record<string, unknown>;
+    if (typeof doc.id !== "string" || !/^[a-zA-Z0-9_-]{1,40}$/.test(doc.id) || typeof doc.label !== "string" || !doc.label.trim() || doc.label.length > 100 || typeof doc.text !== "string" || !doc.text.trim()) throw new RequestError(400, "INVALID_REQUEST", "Each additional document must include a valid ID, label, and text.");
+    if (doc.text.length > 12000) throw new RequestError(413, "INPUT_TOO_LARGE", "An additional evidence document exceeds 12,000 characters.");
+    additionalLength += doc.text.length;
+    return { id: doc.id, label: doc.label.trim(), text: doc.text };
+  });
+  if (b.documentText.length + companyResponse.length + additionalLength > 30000) throw new RequestError(413, "INPUT_TOO_LARGE", "Combined case documents exceed 30,000 characters.");
   if (typeof b.packId !== "string" || !getPack(b.packId)) throw new RequestError(400, "INVALID_REQUEST", "Choose a supported case type.");
   if (typeof b.country !== "string" || !["IN", "EU", "US"].includes(b.country)) throw new RequestError(400, "INVALID_REQUEST", "Choose India, the European Union, or the United States.");
   const option = (key: string, limit: number, fallback?: string) => {
@@ -23,6 +39,8 @@ export function parseCaseRequest(input: unknown) {
   };
   return {
     documentText: b.documentText,
+    companyResponse: companyResponse.trim(),
+    additionalDocuments: parsedDocuments,
     packId: b.packId,
     country: b.country as Country,
     userName: option("userName", 200),

@@ -74,7 +74,7 @@ export async function draftLetter(
   facts:ExtractedFacts,findings:Finding[],compensation:CompensationResult,
   pack:{letterTemplate:string;escalationLadder:Record<string,string[]>},
   userName:string,desiredOutcome:string,language:string,replyDeadline:string,
-  sources:Source[]=[],signal?:AbortSignal,
+  sources:Source[]=[],signal?:AbortSignal,additionalDocuments:{label:string;text:string}[]=[],
 ):Promise<{letter:string;citations:{id:number;title:string;url:string}[]}> {
   signal?.throwIfAborted();
   void compensation; void pack; void language;
@@ -97,6 +97,10 @@ export async function draftLetter(
   });
   const entries=Object.entries(facts).filter(([key,value]) => key!=='disputeSummary' && key!=='companyPosition' && value!==null && value!==undefined && value!=='' && (!Array.isArray(value) || value.length>0));
   const factualDetails=entries.map(([key,value]) => literal(`${key.replace(/([a-z])([A-Z])/g,'$1 $2')}: ${Array.isArray(value) ? value.join('; ') : String(value)}`)).join('\n');
+  const exhibits=additionalDocuments.slice(0,3).map((document,index)=>{
+    const excerpt=document.text.replace(/\s+/g,' ').trim().slice(0,320);
+    return `Additional evidence provided (${literal(document.label || `Exhibit ${index + 1}`)}): “${literal(excerpt)}”`;
+  });
   const name=userName.trim() && userName!=='not supplied' ? literal(userName.trim()) : '[Your name]';
   const letter=[
     name,'[Your address]','[Date]','[Company customer support]','[Reference number]',
@@ -104,6 +108,7 @@ export async function draftLetter(
     'Dear Customer Support,',
     'Please review my concern about the charge or service described below.',
     factualDetails ? `Information from my document:\n${factualDetails}` : '[Add the relevant dates, charge, and service details from your document.]',
+    ...(exhibits.length ? ['Additional evidence for review:',...exhibits,'Please explain how this document affects the objection and identify any remaining conditions.'] : []),
     `My requested outcome is: ${literal(desiredOutcome.trim()) || 'a fair review and resolution of the dispute'}.`,
     ...(quotations.length ? ['Published information for the company to clarify:',...quotations,'Please confirm whether this information applies to my case.'] : []),
     `Requested response period: ${literal(replyDeadline.trim()) || '14 days'}. This is my requested reply period, not an assertion of a statutory deadline.`,

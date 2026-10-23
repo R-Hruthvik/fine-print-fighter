@@ -2,9 +2,12 @@ import type { PipelineResult, RulePack, Country, ExtractedFacts, CompensationRes
 import { extractFacts, planQueries, evaluateFindings, scoreCase, draftLetter, escalateLadder } from "./llm";
 import { researchWithWarnings } from "./tavily";
 import { ProviderError, requireProviderConfiguration } from "./provider";
+import { investigateObjections } from "./rebuttal";
 
 export interface PipelineOptions {
   documentText: string;
+  companyResponse?: string;
+  additionalDocuments?: {id:string;label:string;text:string}[];
   pack: RulePack;
   country: Country;
   userName?: string;
@@ -32,7 +35,7 @@ export function describeRemedy(facts: ExtractedFacts): CompensationResult {
 }
 
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
-  const { documentText, pack, country, userName = "not supplied", desiredOutcome = "a review and fair resolution of the disputed charge", language = "English", replyDeadline = "14 days" } = options;
+  const { documentText, pack, country, userName = "not supplied", desiredOutcome = "a review and fair resolution of the disputed charge", language = "English", replyDeadline = "14 days", companyResponse = "", additionalDocuments = [] } = options;
   requireProviderConfiguration();
   const started = Date.now();
   const startedAt = new Date(started).toISOString();
@@ -49,11 +52,13 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       return value;
     } finally { stageDurations[name] = Date.now() - start; }
   }
-  const facts = await stage("extract", () => extractFacts(documentText, pack, signal));
+  const labeledDocuments=[`Consumer evidence:\n${documentText}`,...(companyResponse?[`Company response or rejection:\n${companyResponse}`]:[]),...additionalDocuments.map(doc=>`Additional evidence (${doc.label}, ${doc.id}):\n${doc.text}`)].join("\n\n");
+  const facts = await stage("extract", () => extractFacts(labeledDocuments, pack, signal));
   const missing = pack.requiredFacts.filter(key => unknown(facts[key]));
   const queries = await stage("plan", () => planQueries(facts, country, pack, signal));
   const research = await stage("research", () => researchWithWarnings(queries, signal, pack.searchPlan.preferredDomains));
-  const { sources } = research;
+  const rebuttalLab=await stage("rebuttal",()=>investigateObjections({facts,companyResponse,country,sources:research.sources,additionalDocuments,signal}));
+  const sources=rebuttalLab.sources;
   const evaluation = await stage("evaluate", () => evaluateFindings(facts, sources, pack, signal));
   const { findings, unverified, conflicts } = evaluation;
   const unanswered = [...new Set([...evaluation.unanswered, ...missing.map(key => `Please confirm ${key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()} to assess applicability.`)])];
@@ -64,9 +69,9 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     if (score.coverage === "sufficient") score.coverage = "limited";
   }
   const compensation = describeRemedy(facts);
-  const { letter, citations } = await stage("draft", () => draftLetter(facts, findings, compensation, pack, userName, desiredOutcome, language, replyDeadline, sources, signal));
+  const { letter, citations } = await stage("draft", () => draftLetter(facts, findings, compensation, pack, userName, desiredOutcome, language, replyDeadline, sources, signal, additionalDocuments));
   const escalation = await stage("escalate", () => escalateLadder(pack, country, sources, signal));
-  const warnings = [...research.warnings];
+  const warnings = [...research.warnings,...rebuttalLab.warnings];
   if (language.trim().toLowerCase() !== "english") warnings.push("The reviewable letter template is currently available in English only. Your requested language was not used.");
   if (!queries.length) warnings.push("No usable research queries could be generated. Evidence coverage is incomplete.");
   if (missing.length) warnings.push("Important applicability details are missing. Check the unanswered questions before relying on the analysis.");
@@ -76,7 +81,8 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     facts, queries: queries.map(q => q.query), sources, findings, score, compensation, letter,
     letterCitations: citations, escalation, unanswered, unverified, conflicts,
     warnings: [...new Set(warnings)], country,
-    run: { requestId, startedAt, durationMs: Date.now() - started, stageDurations, model: process.env.NEMOTRON_MODEL || "nvidia/nemotron-4-340b-instruct", packVersion: pack.version },
+    rebuttalLab:{objections:rebuttalLab.objections,actions:rebuttalLab.actions},
+    run: { requestId, startedAt, durationMs: Date.now() - started, stageDurations, model: process.env.NEMOTRON_MODEL || "nvidia/Nemotron-3_5-Lightning", packVersion: pack.version },
   };
 }
 
