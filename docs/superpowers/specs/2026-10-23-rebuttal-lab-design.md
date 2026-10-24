@@ -1,6 +1,6 @@
 # Rebuttal Lab: proposed hackathon upgrade
 
-Status: research-backed design; not yet implemented.
+Status: historical, research-backed design. The core denial investigation, bounded tool loop, evidence matching, exhibit recheck, before/after review, and live progress events are implemented. Stable challenge identity across revisions, character-offset spans, full-page extraction, and the proposed separately modeled review roles remain deferred; see [current implementation status](../../implementation.md).
 
 Based on [the competition and platform research](../../research/2026-10-23-hackathon-positioning.md). This design changes the flagship interaction while retaining the existing intake, source registry, timeout/error controls, and export infrastructure.
 

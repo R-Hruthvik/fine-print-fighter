@@ -1,10 +1,10 @@
 # Fine Print Fighter — product and implementation specification
 
-Version: 0.2 draft · Updated: 2026-10-23
+Version: 0.3 draft · Updated: 2026-10-24
 
 This specification expands the project outline in [README.md](../README.md). It describes the intended MVP and records the gaps in the existing scaffold. Requirements below are targets unless explicitly marked as implemented. Legal rules, eligibility, contacts, and deadlines must be established from applicable sources during research; this document does not establish them.
 
-The text workflow is now implemented. See [implementation status](implementation.md) for current behavior and remaining release gates. The baseline and HTTP table below describe the original scaffold; current stage endpoints are development-only and use registered pack IDs. Current letters use a deterministic English template with quoted evidence and explicit applicability questions.
+The text workflow is now implemented. See [implementation status](implementation.md) for current behavior and remaining release gates. Section 3 records the original scaffold as historical context; section 7 lists current route contracts. Stage endpoints are development-only and use registered pack IDs. Current letters use a deterministic English template with quoted evidence and explicit applicability questions.
 
 ## 1. Product outcome
 
@@ -29,7 +29,7 @@ The README's under-90-second goal is a performance target, not a measured guaran
 
 PDF parsing, image OCR, accounts, payments, saved case history, automatic sending, filing complaints, and representation are outside this MVP. Language is an optional generation preference; accuracy in any particular language is not established until evaluated.
 
-## 3. Current implementation baseline
+## 3. Original scaffold baseline (historical)
 
 The repository contains a Next.js App Router application, three JSON rule packs, typed pipeline functions, seven POST routes, and a client interface with input, progress, and results views.
 
@@ -37,7 +37,7 @@ The repository contains a Next.js App Router application, three JSON rule packs,
 | --- | --- | --- |
 | Intake | Pasted text and text MIME uploads; UI advertises `.txt`/`.md` | Consistent extension/MIME validation, size limits, empty-file feedback |
 | Orchestration | `/api/extract` runs the entire pipeline | Preserve this contract while adding validation and failure handling |
-| Progress | Timer is created after awaiting the request; stage display is simulated | Show an honest indeterminate state or actual server events |
+| Progress | The original scaffold used a simulated stage display | Replaced by real pipeline stage and completed tool-action events; see [implementation status](implementation.md) |
 | Research | Queries run sequentially; each result is truncated to 600 characters | Bound queries, deduplicate URLs, retain enough text for verification, report failures |
 | Verification | Checks whether at least one supplied source ID exists | Validate every reference, matching passage, and applicability; model output alone cannot verify a claim |
 | Scoring | Model generates rating and reasons | Enforce rating constraints in application code |
@@ -151,17 +151,17 @@ Use one normalized representation for missing fields in the future contract. Ada
 
 ## 7. HTTP interface
 
-All existing routes are JSON POST endpoints. There is no authentication, persistence, or streaming protocol. Production analysis uses shared rate limits; development stage routes are disabled outside development. The table records current contracts, not a claim that their validation is complete.
+All routes use POST with JSON request bodies. `/api/extract` returns the full `PipelineResult` as JSON by default. First-party clients can request `Accept: application/x-ndjson`; the response streams `{type:"progress", event}` lines and ends with `{type:"result", result}` or `{type:"error", status, error}`. Failures after streaming begins use an error frame because the HTTP response is already 200. Validation and budget failures before stream creation use the normal JSON error response and HTTP status. The endpoint has no user authentication or persistence. Production analysis uses shared rate limits; stage routes are disabled outside development.
 
 | Endpoint | Current request fields | Current success body |
 | --- | --- | --- |
 | `/api/extract` | `documentText`, `companyResponse`, `packId`, `country`; optional up to three `additionalDocuments`, `userName`, `desiredOutcome`, `language`, `replyDeadline` | Full `PipelineResult` |
 | `/api/plan` | `facts`, `packId`, `country` | `{ queries }` |
-| `/api/research` | `queries: { query, targets }[]` | `{ sources }` |
-| `/api/evaluate` | `facts`, `sources`, `evaluationPrompt` | `{ findings, unverified, unanswered }` |
-| `/api/score` | `findings` | `CaseScore` |
-| `/api/draft` | `facts`, `findings`, `letterTemplate`; optional compensation, escalation ladder, and letter preferences | `{ letter, citations }` |
-| `/api/escalate` | `escalationLadder`, `country`, `sources` | `{ ladder }` |
+| `/api/research` | Up to six `queries: { query, targets }[]` | `{ sources }` |
+| `/api/evaluate` | `facts`, `sources`, `packId` | `{ findings, unverified, unanswered, conflicts }` |
+| `/api/score` | `findings`, `sources` | `CaseScore` |
+| `/api/draft` | `facts`, `findings`, `sources`, `packId`; optional `userName`, `desiredOutcome`, `language`, `replyDeadline` | `{ letter, citations }` |
+| `/api/escalate` | `packId`, `country`, `sources` | `{ ladder }` |
 
 The existing error format is `{ error: string }`, with basic validation returning 400 and caught failures returning 500. Keep the `error` string compatible and add `code`, optional `stage`, `retryable`, and `requestId`.
 
