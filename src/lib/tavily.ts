@@ -20,6 +20,7 @@ export async function tavilySearch(query:string,maxResults=5,signal?:AbortSignal
     return data.results.slice(0,5).filter((result):result is TavilyResult => isObject(result) && text(result.url,3000) && safeSourceURL(result.url) && text(result.title,1000) && text(result.content,100_000)).map(result => ({url:result.url,title:result.title,content:result.content.slice(0,6000)}));
   } catch (error) {
     if (signal?.aborted) throw new ProviderError('The analysis deadline was exceeded.',504,'ANALYSIS_TIMEOUT',true);
+    if (timeout.aborted) throw new ProviderError('A web research search timed out. Evidence coverage may be incomplete.',504,'RESEARCH_TIMEOUT',true);
     if (error instanceof ProviderError) throw error;
     throw new ProviderError('Research is temporarily unavailable.',502,'RESEARCH_UNAVAILABLE',true);
   }
@@ -27,14 +28,14 @@ export async function tavilySearch(query:string,maxResults=5,signal?:AbortSignal
 
 export async function researchWithWarnings(queries:ResearchQuery[],signal?:AbortSignal,preferredDomains:string[]=[]):Promise<{sources:Source[];warnings:string[]}> {
   const bounded=queries.slice(0,6);
-  const results:{query:ResearchQuery;results:TavilyResult[];failed:boolean;rateLimited?:boolean}[]=[];
+  const results:{query:ResearchQuery;results:TavilyResult[];failed:boolean;rateLimited?:boolean;timedOut?:boolean}[]=[];
   // Three requests at a time; preserving input order keeps IDs deterministic.
   for (let offset=0;offset<bounded.length;offset+=3) {
     const batch=await Promise.all(bounded.slice(offset,offset+3).map(async query => {
       try { return {query,results:await tavilySearch(query.query,5,signal,preferredDomains),failed:false}; }
       catch (error) {
         if (signal?.aborted || error instanceof ProviderError && error.status===503) throw error;
-        return {query,results:[],failed:true,rateLimited:error instanceof ProviderError&&error.code==='RESEARCH_RATE_LIMITED'};
+        return {query,results:[],failed:true,rateLimited:error instanceof ProviderError&&error.code==='RESEARCH_RATE_LIMITED',timedOut:error instanceof ProviderError&&error.code==='RESEARCH_TIMEOUT'};
       }
     }));
     results.push(...batch);
@@ -44,7 +45,7 @@ export async function researchWithWarnings(queries:ResearchQuery[],signal?:Abort
   const warnings:string[]=[];
   const retrievedAt=new Date().toISOString();
   for (const entry of results) {
-    if (entry.failed) warnings.push(entry.rateLimited&&!process.env.TAVILY_API_KEY?'Tavily keyless access reached its rate limit. Add TAVILY_API_KEY for a predictable quota or retry later; evidence coverage is incomplete.':entry.rateLimited?'Tavily reached its configured rate limit. Retry later; evidence coverage is incomplete.':'A research search was unavailable. Evidence coverage may be incomplete.');
+    if (entry.failed) warnings.push(entry.timedOut?'A research search timed out. Evidence coverage may be incomplete.':entry.rateLimited&&!process.env.TAVILY_API_KEY?'Tavily keyless access reached its rate limit. Add TAVILY_API_KEY for a predictable quota or retry later; evidence coverage is incomplete.':entry.rateLimited?'Tavily reached its configured rate limit. Retry later; evidence coverage is incomplete.':'A research search was unavailable. Evidence coverage may be incomplete.');
     for (const item of entry.results) {
       const canonical=new URL(item.url);canonical.hash='';
       const url=canonical.toString();

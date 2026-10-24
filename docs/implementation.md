@@ -26,7 +26,7 @@ Rule packs have versions, required applicability facts, and review dates. Their 
 - `/api/extract` keeps its JSON response by default and can stream real stage transitions and completed registered tool actions as NDJSON to the first-party interface. The stream ends with the same pipeline result or a safe structured error; progress contains no case text or model-supplied claims.
 - Development stage endpoints disabled unless explicitly enabled; never enabled in production.
 - Safe public errors and case-free routine timing/count logs.
-- Upstream HTTP 402 is surfaced as a nonretryable provider-account action error; upstream response bodies remain private.
+- Safe provider error messages now reach the user; upstream response bodies remain private. HTTP 402 produces a nonretryable provider-account action message, and per-search timeouts reduce evidence coverage without aborting the overall analysis.
 - No database, saved cases, automatic sending, or provider key exposure in client code.
 
 ## Verification and remaining release gates
