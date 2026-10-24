@@ -66,14 +66,12 @@ export async function investigateObjections(args:{ facts:ExtractedFacts; company
       if(!parsed){messages.push({role:'tool',tool_call_id:raw.id,name,content:'Rejected: invalid tool arguments.'});continue;}
       if(name==='finish_investigation'){
         final=parsed;
-        const action:Action={tool:name,summary:'Checked the proposed objections against retained source passages.',sourceIds:[],durationMs:Math.max(0,Date.now()-started)};
-        actions.push(action);
-        try{args.onAction?.(action);}catch{/* Progress delivery must not affect the investigation. */}
         messages.push({role:'tool',tool_call_id:raw.id,name,content:'Investigation result recorded.'});
         continue;
       }
       let output:unknown={error:'Unknown or invalid tool request.'};
       let sourceIds:string[]=[];
+      let summary:string|undefined;
       if(name==='research_objection'&&typeof parsed.focus==='string'&&(focusTypes as readonly string[]).includes(parsed.focus)){
         const focus=parsed.focus as typeof focusTypes[number];
         const focusText:Record<typeof focusTypes[number],string>={cancellation_timing:'when cancellation became effective and whether confirmation was required',billing_cycle:'billing cutoff dates and the next renewal cycle',policy_exception:'published exceptions and notice requirements',authorization:'what proves the payment was authorized'};
@@ -83,20 +81,24 @@ export async function investigateObjections(args:{ facts:ExtractedFacts; company
         for(const source of added){source.id=`s${registry.length+1}`;registry.push(source);sourceIds.push(source.id);}
         warnings.push(...result.warnings);
         output={focus,addedSources:added.map(({id,title,url,snippet})=>({id,title,url,snippet:snippet.slice(0,1600)})),message:added.length?'New retained policy sources found.':'No new usable sources found.'};
+        summary=`Searched company policy: ${focus.replace(/_/g,' ')}.`;
       }else if(name==='inspect_source'&&typeof parsed.sourceId==='string'){
         const source=registry.find(item=>item.id===parsed.sourceId);
         output=source?{id:source.id,title:source.title,url:source.url,snippet:source.snippet.slice(0,3500)}:{error:'Source ID is not in the retained registry.'};
-        if(source)sourceIds=[source.id];
+        if(source){sourceIds=[source.id];summary='Inspected a retained public source.';}
       }else if(name==='request_evidence'&&typeof parsed.kind==='string'&&(evidenceTypes as readonly string[]).includes(parsed.kind)&&typeof parsed.explanation==='string'){
         const detail=parsed.explanation.replace(/\s+/g,' ').trim().slice(0,240);
         const request=`${parsed.kind.replace(/_/g,' ')}: ${detail}`;
-        if(detail&&requested.length<5)requested.push(request);
-        output={recorded:!!detail,request};
+        const recorded=!!detail&&requested.length<5;
+        if(recorded)requested.push(request);
+        output={recorded, ...(recorded?{request}:{message:'The evidence request was empty or the request limit was reached.'})};
+        if(recorded)summary=`Requested evidence: ${String(parsed.kind).replace(/_/g,' ')}.`;
       }
-      const summary=name==='research_objection'?`Searched company policy: ${String(parsed.focus).replace(/_/g,' ')}.`:name==='inspect_source'?'Inspected a retained public source.':`Requested evidence: ${String(parsed.kind).replace(/_/g,' ')}.`;
-      const action:Action={tool:name,summary,sourceIds,durationMs:Math.max(0,Date.now()-started)};
-      actions.push(action);
-      try{args.onAction?.(action);}catch{/* Progress delivery must not affect the investigation. */}
+      if(summary){
+        const action:Action={tool:name,summary,sourceIds,durationMs:Math.max(0,Date.now()-started)};
+        actions.push(action);
+        try{args.onAction?.(action);}catch{/* Progress delivery must not affect the investigation. */}
+      }
       messages.push({role:'tool',tool_call_id:raw.id,name,content:JSON.stringify(output).slice(0,8000)});
       if(actions.length>=4)break;
     }
