@@ -38,6 +38,12 @@ A matching passage proves traceability, not legal applicability or entitlement. 
 
 The research tool choices are model-directed; the application executes only fixed functions with enumerated inputs and registered source IDs. The overall analysis is limited to 120 seconds, three tool turns, and six tool calls. A matching passage establishes traceability only. Live-provider latency, selected-model account availability, and jurisdiction applicability have not been verified.
 
+## Hackathon-period changes
+
+The public repository baseline was published on October 23, 2026. During the hackathon submission period, the project was extended from a general dispute-analysis pipeline into the evidence-revision workflow described above. The substantive changes include a bounded Nemotron function-call loop for investigating the company's written objection; separate company-response and consumer-evidence handling; exact passage checks for objections and cited letter text; reanalysis when exhibits are added or removed; live, application-generated progress events; and an offline fictional walkthrough that demonstrates how removing or replacing evidence changes the traceability check. Request validation, shared production rate limits, and deployment controls were also added.
+
+See the [repository changes since the published baseline](https://github.com/R-Hruthvik/fine-print-fighter/compare/9e683e9..HEAD) for the code history. This is a development summary, not evidence of a live deployment or successful provider run; those checks remain open. [Hackathon rules](https://nebiusglobalaihackathon.devpost.com/rules)
+
 ## Architecture
 
 Next.js 16 App Router, React, TypeScript, and custom responsive CSS. Nebius Token Factory supplies the configured NVIDIA Nemotron model; Tavily supplies research results. No application database or saved case history.
