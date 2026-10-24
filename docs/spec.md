@@ -151,11 +151,11 @@ Use one normalized representation for missing fields in the future contract. Ada
 
 ## 7. HTTP interface
 
-All existing routes are JSON POST endpoints. There is currently no authentication, rate limiting, persistence, or streaming protocol. The table records current contracts, not a claim that their validation is complete.
+All existing routes are JSON POST endpoints. There is no authentication, persistence, or streaming protocol. Production analysis uses shared rate limits; development stage routes are disabled outside development. The table records current contracts, not a claim that their validation is complete.
 
 | Endpoint | Current request fields | Current success body |
 | --- | --- | --- |
-| `/api/extract` | `documentText`, `packId`, `country`; optional `userName`, `desiredOutcome`, `language`, `replyDeadline` | Full `PipelineResult` |
+| `/api/extract` | `documentText`, `companyResponse`, `packId`, `country`; optional up to three `additionalDocuments`, `userName`, `desiredOutcome`, `language`, `replyDeadline` | Full `PipelineResult` |
 | `/api/plan` | `facts`, `packId`, `country` | `{ queries }` |
 | `/api/research` | `queries: { query, targets }[]` | `{ sources }` |
 | `/api/evaluate` | `facts`, `sources`, `evaluationPrompt` | `{ findings, unverified, unanswered }` |
@@ -205,7 +205,7 @@ Proposed initial operating limits, to tune using measured runs:
 
 Missing credentials must fail clearly before analysis begins. Distinguish zero search results from a search outage. When research fails, show a degraded result only if the interface clearly identifies unavailable evidence and avoids unsupported claims; otherwise fail with a retryable message.
 
-Keep provider keys on the server. Minimize search queries to company/product/jurisdiction and relevant issue details; exclude names, addresses, account numbers, and full document text. Treat uploaded text and retrieved content as untrusted data rather than instructions. Render generated text as text and allow only safe HTTP(S) source links. Add request budgets before a public deployment.
+Keep provider keys and Upstash credentials on the server. Minimize search queries to company/product/jurisdiction and relevant issue details; exclude names, addresses, account numbers, and full document text. Treat uploaded text and retrieved content as untrusted data rather than instructions. Render generated text as text and allow only safe HTTP(S) source links. Production analysis requires shared per-IP and global daily budgets; configure a measured spend cap before making the route public.
 
 The MVP does not deliberately persist case content. Do not describe this as zero retention: provider and hosting retention settings must be reviewed and disclosed separately.
 
@@ -236,7 +236,7 @@ Gate: a text case can be submitted, reviewed, edited, downloaded, printed, and r
 ### Milestone 3 — release evidence
 
 - Validate and review all three packs and supported jurisdiction combinations.
-- Add minimized search queries, request budgets, safe logging, and deployment deadline checks.
+- Keep minimized search queries and safe logging; configure shared request budgets and deployment deadline checks before launch.
 - Evaluate representative supported, opposing, insufficient-evidence, and conflicting-source cases for each pack.
 - Run configured-provider checks and collect latency and failure measurements.
 - Update README claims to match measured capabilities.

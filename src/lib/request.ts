@@ -2,7 +2,7 @@ import { getPack } from "./packs";
 import type { Country } from "./types";
 
 export class RequestError extends Error {
-  constructor(public status: number, public code: string, message: string, public retryable = false) {
+  constructor(public status: number, public code: string, message: string, public retryable = false, public retryAfterSeconds?: number) {
     super(message);
   }
 }
@@ -86,12 +86,12 @@ const SAFE_MESSAGES: Record<number, string> = {
 };
 
 export function errorResponse(error: unknown, requestId: string): Response {
-  const e = error as { status?: number; code?: string; retryable?: boolean; stage?: string } | null;
+  const e = error as { status?: number; code?: string; retryable?: boolean; stage?: string; retryAfterSeconds?: number } | null;
   const status = e?.status && Object.hasOwn(SAFE_MESSAGES, e.status) ? e.status : 500;
   const code = typeof e?.code === "string" && /^[A-Z_]{1,50}$/.test(e.code) ? e.code : "INTERNAL_ERROR";
   const publicMessage = error instanceof RequestError ? error.message : SAFE_MESSAGES[status] ?? "Analysis failed unexpectedly. Please try again.";
   return Response.json({ error: publicMessage, code, retryable: e?.retryable === true, requestId }, {
-    status, headers: { "Cache-Control": "no-store", ...(status === 429 ? { "Retry-After": "60" } : {}) },
+    status, headers: { "Cache-Control": "no-store", ...(status === 429 ? { "Retry-After": String(Math.max(1, e?.retryAfterSeconds ?? 60)) } : {}) },
   });
 }
 

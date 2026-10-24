@@ -12,6 +12,7 @@
     "verify": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@upstash/redis": "^1.39.0",
     "next": "16.4.2",
     "react": "19.3.0",
     "react-dom": "19.3.0"

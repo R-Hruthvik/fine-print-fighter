@@ -55,7 +55,7 @@ The server pipeline extracts facts, builds initial queries from pack templates, 
 
 Case content stays in browser memory and transient server requests. The model receives document text; Tavily receives minimized queries. Routine application logs contain timing and counts, not case text. Provider and hosting retention policies still apply.
 
-The app has a process-local budget of 12 analyses per minute and at most three concurrent analyses. Before a public multi-instance deployment, enforce a shared request budget at the hosting boundary and verify the host supports 120-second requests.
+Production analysis requires a shared Upstash request budget: 12 analyses per trusted client IP per minute plus the configured global daily maximum. The app fails closed if the store, hash secret, daily cap, or trusted client-IP header is unavailable. Development uses a local 12-per-minute budget. See the [deployment guide](docs/deployment.md) for key rotation, spend-cap setup, and trusted proxy requirements. Each process also limits itself to three concurrent analyses.
 
 ## HTTP interface
 

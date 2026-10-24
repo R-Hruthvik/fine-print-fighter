@@ -17,7 +17,7 @@ Verification runs lint, TypeScript checks, fixture-based tests, and a production
 
 ## Configure server environment variables
 
-Set these through your host's secret/environment settings. For a local production smoke test, you can use an ignored `.env.local` file based on [the example](../.env.local.example). Do not commit real values, include them in screenshots, or prefix keys with `NEXT_PUBLIC_`: public-prefixed values are included in browser bundles. Server environment variables can be supplied at runtime. [Next.js environment guidance](https://nextjs.org/docs/app/guides/self-hosting#environment-variables)
+Set these through your host's secret/environment settings. For a local production smoke test, you can use an ignored `.env.local` file based on [the example](../.env.local.example), including a test Upstash store and an explicit low daily cap. Do not commit real values, include them in screenshots, or prefix keys with `NEXT_PUBLIC_`: public-prefixed values are included in browser bundles. Server environment variables can be supplied at runtime. [Next.js environment guidance](https://nextjs.org/docs/app/guides/self-hosting#environment-variables)
 
 | Variable | Deployment value |
 | --- | --- |
@@ -26,6 +26,11 @@ Set these through your host's secret/environment settings. For a local productio
 | `NEMOTRON_MODEL` | A model available to your account; the default is `nvidia/Nemotron-3_5-Lightning` |
 | `TAVILY_API_KEY` | Optional secret when keyless research is enabled; recommended for predictable account quotas during judging |
 | `ENABLE_STAGE_ROUTES` | Leave unset; individual stage routes are development interfaces and remain unavailable in production |
+| `UPSTASH_REDIS_REST_URL` | Required for production: HTTPS endpoint of a shared, single-region Upstash Redis database with EVAL support |
+| `UPSTASH_REDIS_REST_TOKEN` | Required secret for the Upstash database |
+| `RATE_LIMIT_HASH_SECRET` | Required secret of at least 32 characters; HMACs the trusted client IP before it becomes a Redis key |
+| `MAX_PUBLIC_ANALYSES_PER_DAY` | Required integer from 1 to 10,000; global rolling 24-hour analysis cap across all clients. Set separate lower Preview and approved Production values |
+| `TRUSTED_CLIENT_IP_HEADER` | Optional; defaults to Vercel's `x-vercel-forwarded-for`. For another host, set only a header the trusted reverse proxy overwrites with the actual client IP |
 
 Omitting `TAVILY_API_KEY` selects Tavily Search through `X-Tavily-Access-Mode: keyless`. This is limited exploration access, not a capacity guarantee. A keyless rate limit or research failure must remain visible as incomplete evidence; it must not become a fabricated successful search. The app still needs an authorized Nebius key for live analysis. [Tavily keyless documentation](https://docs.tavily.com/documentation/keyless), [Nebius onboarding](https://docs.tokenfactory.nebius.com/quickstart)
 
@@ -69,9 +74,11 @@ A rendered page or fixture playback is useful for UI review but does not prove l
 
 ## Request budgets and availability
 
-The analysis route currently allows at most three concurrent analyses and twelve analysis starts per minute **per process**. These counters reset on restart and are not shared between replicas or serverless instances. They are neither a deployment-wide spending cap nor a fair per-user quota.
+Production analysis checks a shared Upstash store before any model or research call. One atomic Redis script enforces at most twelve starts per trusted client IP per minute and `MAX_PUBLIC_ANALYSES_PER_DAY` over the exact preceding 24 hours across all instances. Production and Preview use separate Redis key namespaces; configure their daily caps independently. The global cap is mandatory; production requests fail closed if shared budget configuration is missing or unavailable. A process-local limit of three concurrent analyses also protects each running instance. Development uses the existing process-local per-minute budget.
 
-For a public multi-instance deployment, configure a shared request budget or a hosting-boundary limit, monitor provider spending, and test normal judge usage. Avoid an exhausted global quota blocking the judging workflow. A 429 response includes `Retry-After`; a research quota failure must be shown as a limitation. The 120-second execution limit does not guarantee successful completion within that time.
+Choose `MAX_PUBLIC_ANALYSES_PER_DAY` only after checking the account's model and research pricing and estimating a conservative maximum cost per analysis from a live representative run. Set the cap to `floor(approved daily spend / conservative maximum cost per analysis)`, then reserve headroom for retries and failed requests. This counter caps analysis starts, not dollars; it cannot guarantee a spend amount while per-run usage is unmeasured. The current project has no verified per-run cost or live-provider latency, so do not enable public analysis until the account owner sets and accepts a numeric cap.
+
+Use Vercel's documented `x-vercel-forwarded-for` header by default. Do not trust an arbitrary client-supplied `X-Forwarded-For`; on a self-hosted Node deployment, configure `TRUSTED_CLIENT_IP_HEADER` only if the front proxy overwrites it from the network peer and the app origin cannot be reached directly. The app hashes this address with `RATE_LIMIT_HASH_SECRET` before storing the per-IP limit and never logs the raw address. Keep Upstash analytics disabled for this limiter. To rotate a provider or Upstash token, create its replacement, update the matching Production and Preview environment values, redeploy those environments, verify the new credential, then revoke the old one. Rotate the Upstash token without deleting the database or changing the stable key namespace. Rotating `RATE_LIMIT_HASH_SECRET` changes per-IP identifiers and resets those short-window counters; do not rotate it during a demo. Keep the global rolling cap data intact when rotating credentials. A 429 response includes the applicable `Retry-After`; a research quota failure is shown as an evidence limitation. The 120-second execution limit does not guarantee successful completion within that time.
 
 ## Give judges working access
 

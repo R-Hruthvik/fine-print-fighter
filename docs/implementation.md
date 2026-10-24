@@ -22,7 +22,7 @@ Rule packs have versions, required applicability facts, and review dates. Their 
 - Explicit optional-field type/length checks and supported pack/jurisdiction checks.
 - Initial model attempt plus at most one retry/repair; no recursive repair.
 - Model call timeout 25 seconds, research call timeout 15 seconds, overall analysis deadline 120 seconds.
-- Process-local budget: 12 analyses per minute, at most three concurrent analyses.
+- Production: Upstash-backed rolling budget of 12 requests per trusted IP per minute and a required global daily request cap. Per-IP identifiers are HMACed; production fails closed when shared limit configuration is unavailable. Development uses a process-local 12-per-minute budget. Each process allows at most three concurrent analyses.
 - Development stage endpoints disabled unless explicitly enabled; never enabled in production.
 - Safe public errors and case-free routine timing/count logs.
 - No database, saved cases, automatic sending, or provider key exposure in client code.
@@ -39,7 +39,7 @@ The following gates still require external evidence rather than local fixtures:
 - Run at least 20 representative configured-provider cases and report median/p95 latency and failures. No under-90-second performance claim is made.
 - Review all pack/jurisdiction combinations for applicability and escalation provenance before enabling independently supported applicability or strong ratings.
 - Implement and review compensation formulas before displaying entitlement estimates.
-- Review provider/hosting retention and enforce a shared request budget if deployed across multiple instances.
+- Review provider/hosting retention and set the required global analysis cap from measured provider cost before deployment.
 - Add and evaluate additional letter language templates before offering translation.
 
 No credentials were added or modified, and no paid provider requests are needed for local regression tests.
