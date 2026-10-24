@@ -2,6 +2,7 @@ import type { ExtractedFacts, Source } from './types';
 import { isObject, llmToolTurn } from './provider';
 import { researchWithWarnings } from './tavily';
 import { safeSearchEntity } from './query';
+import { containsExactPassage } from './exact-passage';
 
 type Action = { tool: string; summary: string; sourceIds: string[]; durationMs: number };
 type Objection = { id: string; hypothesis: string; supportingPassage: string; evidenceNeeded: string[]; evidenceMatch?:{documentId:string;label:string;passage:string}; status: 'unresolved' | 'document-provided' | 'unsupported'; sourceIds: string[] };
@@ -108,12 +109,12 @@ export async function investigateObjections(args:{ facts:ExtractedFacts; company
     const sourceIds=requestedIds.filter((id):id is string=>typeof id==='string'&&registry.some(source=>source.id===id));
     const allReferencesValid=sourceIds.length>0&&sourceIds.length===requestedIds.length&&new Set(sourceIds).size===sourceIds.length;
     const passage=typeof item.supportingPassage==='string'?normalize(item.supportingPassage):'';
-    const grounded=allReferencesValid&&passage.length>=12&&sourceIds.every(id=>{const source=registry.find(entry=>entry.id===id);return !!source&&normalize(source.snippet).includes(passage);});
+    const grounded=allReferencesValid&&sourceIds.every(id=>{const source=registry.find(entry=>entry.id===id);return !!source&&containsExactPassage(source.snippet,passage);});
     const needed=item.evidenceNeeded.filter((value):value is string=>typeof value==='string'&&value.trim().length>0).slice(0,4);
     const docId=typeof item.evidenceDocumentId==='string'?item.evidenceDocumentId:'';
     const document=args.additionalDocuments.find(doc=>doc.id===docId);
     const evidencePassage=typeof item.evidencePassage==='string'?normalize(item.evidencePassage):'';
-    const evidenceMatch=document&&evidencePassage.length>=12&&normalize(document.text).includes(evidencePassage)?{documentId:document.id,label:document.label,passage:evidencePassage}:undefined;
+    const evidenceMatch=document&&containsExactPassage(document.text,evidencePassage)?{documentId:document.id,label:document.label,passage:evidencePassage}:undefined;
     return [{id:`objection-${index+1}`,hypothesis:item.hypothesis.replace(/\s+/g,' ').slice(0,500),supportingPassage:grounded?passage:'',evidenceNeeded:needed.length?needed:requested.slice(0,2),...(evidenceMatch?{evidenceMatch}:{}),status:!grounded?'unsupported':evidenceMatch?'document-provided':'unresolved',sourceIds:grounded?sourceIds:[]}];
   });
   if(!objections.length)warnings.push('No company-side objection could be verified against the retained policy passages.');

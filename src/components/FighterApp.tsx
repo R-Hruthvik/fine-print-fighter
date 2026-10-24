@@ -6,6 +6,7 @@ import { CASE_TYPES, COUNTRIES } from "@/lib/packs";
 import { MAX_DOCUMENT_CHARACTERS, MAX_FILE_BYTES, validateDocument, validateTextFile } from "./workflow";
 import { CaseResult } from "./CaseResult";
 import { AnalysisProgress } from "./AnalysisProgress";
+import { EvidenceWalkthrough } from "./EvidenceWalkthrough";
 
 type FormState = {
   country: Country;
@@ -211,6 +212,7 @@ export function FighterApp() {
           <li><span className="process-number">03</span><div><strong>Choose your next step</strong><p>Edit your letter and review escalation options.</p></div></li>
         </ol>
         <div className="scope-note"><span className="small-label">You stay in control</span><p>Nothing is sent or filed for you. This is an information tool, not legal advice.</p></div>
+        <EvidenceWalkthrough />
       </aside>
 
       <section className="intake-panel" aria-labelledby="intake-heading">

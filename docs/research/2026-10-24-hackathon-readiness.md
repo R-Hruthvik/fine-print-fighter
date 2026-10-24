@@ -20,6 +20,8 @@ Nebius recommends Nemotron 3.5 Lightning for efficient agentic reasoning and lis
 
 Make the first screen self-explanatory, identify which actions Nemotron selects and which checks the application enforces, and show one failure example such as an irrelevant exhibit or missing source. The fictional sample must visibly say that its company reply is invented while external research is live.
 
+**Additional product inference:** complaint-letter templates and attachments are established parts of consumer complaint workflows: the FTC recommends naming supporting enclosures in a letter, and the CFPB accepts supporting documents and later asks consumers to review the company's response. The defensible demo emphasis is the traceability check: removing a document, substituting irrelevant text, or editing a quoted passage changes whether that exact passage is present. The new offline walkthrough marks every element fictional and makes no provider call. This is a product demonstration, not a claim of unique capability across all competitors. [FTC letter guidance](https://consumer.ftc.gov/articles/sample-customer-complaint-letter), [CFPB complaint process](https://www.consumerfinance.gov/complaint/)
+
 ## Delivery backlog
 
 1. Run a real configured model request and record the actual model, latency, function calls, returned source references, and limitations. Track in [live provider contract verification](https://github.com/R-Hruthvik/fine-print-fighter/issues/11).

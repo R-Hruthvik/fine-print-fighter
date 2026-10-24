@@ -28,6 +28,7 @@ Set `NEBIUS_API_KEY` in `.env.local`. `TAVILY_API_KEY` is optional: without it, 
 - Total case text up to 30,000 characters across the primary document, company response, and added exhibits; company responses and individual exhibits are limited to 12,000 characters each.
 - Grounded extraction, minimized queries, deduplicated research, passage checks, conservative evidence ratings, and visible conflicts and unanswered questions.
 - Rebuttal Lab with a bounded Nemotron function-call loop, allowlisted research/source/evidence tools, a live timeline of completed analysis stages and tool actions, and application-verified policy quotations.
+- A clearly labeled offline walkthrough lets visitors remove or replace a fictional exhibit and see whether its exact passage still matches. It makes no model calls and does not estimate legal outcomes.
 - Separate company-response intake and up to three added evidence documents with distinct IDs. Rechecks run from the original inputs; supplied evidence is described as added, not proof of eligibility.
 - Deterministic English complaint letters that quote matching research passages and ask the company to confirm applicability. Citation records come from the application source registry.
 - Editable letters with current-text download and print/PDF export, cancellation, and clear-case controls.
@@ -59,7 +60,7 @@ Production analysis requires a shared Upstash request budget: 12 analyses per tr
 
 ## HTTP interface
 
-`POST /api/extract` runs the full pipeline. Required JSON fields: `documentText`, `companyResponse`, `packId`, `country` (`IN`, `EU`, `US`). Optional `additionalDocuments` accepts up to three `{id,label,text}` exhibits; a recheck resubmits the original documents and does not rely on a client-provided assessment. Other optional fields: `userName`, `desiredOutcome`, `language`, `replyDeadline`. Letters currently use the English template; another requested language returns an explicit warning.
+`POST /api/extract` runs the full pipeline and returns JSON by default. First-party clients may request `Accept: application/x-ndjson` to receive real progress events followed by the same result or a safe error. Required JSON fields: `documentText`, `companyResponse`, `packId`, `country` (`IN`, `EU`, `US`). Optional `additionalDocuments` accepts up to three `{id,label,text}` exhibits; a recheck resubmits the original documents and does not rely on a client-provided assessment. Other optional fields: `userName`, `desiredOutcome`, `language`, `replyDeadline`. Letters currently use the English template; another requested language returns an explicit warning.
 
 Errors contain `error`, `code`, `retryable`, and `requestId`. Responses use `Cache-Control: no-store`. Invalid input returns 400/413, budget limits 429, unavailable configuration 503, upstream failure 502, and timeout 504.
 
