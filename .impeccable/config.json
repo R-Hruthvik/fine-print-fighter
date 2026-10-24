@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "arial",
+        "createdAt": "2026-10-24T06:12:57.315Z",
+        "reason": "The existing trust-first interface deliberately uses a dependable system font for body and print text, paired with Georgia editorial headings."
+      }
+    ]
+  }
+}
