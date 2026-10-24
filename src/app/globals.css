@@ -105,6 +105,9 @@ label input, label select { margin-top: 7px; font-weight: 400; }
 .text-button span { margin-left: 5px; }
 .document-input { min-height: 205px; font-size: 13px; line-height: 1.75; padding: 15px; }
 .document-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 9px; margin-top: 5px; overflow-wrap: anywhere; }
+.company-response-meta { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-top: 7px; }
+.company-response-meta .field-hint { margin: 0; max-width: 58ch; }
+.character-counter { flex: 0 0 auto; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 .over-limit { color: var(--danger); font-weight: 700; }
 .sample-row { display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--muted); margin: 14px 0 22px; }
 .preferences { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 24px; }
@@ -274,6 +277,7 @@ label input, label select { margin-top: 7px; font-weight: 400; }
   .document-label label { font-size: 12px; }
   .document-label .text-button { font-size: 10px; }
   .document-meta { flex-direction: column; gap: 1px; font-size: 9px; }
+  .company-response-meta { flex-direction: column; gap: 5px; }
   .sample-row { flex-wrap: wrap; gap: 3px 8px; }
   .submission-row { flex-wrap: wrap; gap: 15px; }
   .submission-row .primary-button { flex-basis: 100%; }
