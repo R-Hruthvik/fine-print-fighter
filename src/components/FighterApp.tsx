@@ -27,6 +27,8 @@ const SAMPLE = "FICTIONAL SAMPLE — SUBSCRIPTION BILLING DISPUTE\n\nCompany: Ex
 export function FighterApp() {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [result, setResult] = useState<PipelineResult | null>(null);
+  const [previousResult, setPreviousResult] = useState<PipelineResult | null>(null);
+  const [isFictionalSample, setIsFictionalSample] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -76,8 +78,8 @@ export function FighterApp() {
       if (index < 0) merged.push(document);
       else merged[index] = document;
     }
-    if (merged.reduce((total, document) => total + document.text.length, 0) > 30_000) {
-      setError("The combined additional evidence exceeds 30,000 characters. Shorten the added document before rechecking.");
+    if (form.documentText.length + form.companyResponse.length + merged.reduce((total, document) => total + document.text.length, 0) > 30_000) {
+      setError("All case documents together exceed 30,000 characters. Shorten an added document before rechecking.");
       return;
     }
     await submitAnalysis(merged);
@@ -89,6 +91,10 @@ export function FighterApp() {
     if (validation) { setError(validation); return; }
     if (!form.companyResponse.trim()) { setError("Paste the company’s rejection or reply so the Rebuttal Lab can investigate its explanation."); return; }
     if (form.companyResponse.length > 12_000) { setError("The company response exceeds 12,000 characters. Shorten it before analyzing."); return; }
+    if (form.documentText.length + form.companyResponse.length + documents.reduce((total, document) => total + document.text.length, 0) > 30_000) {
+      setError("All case documents together exceed 30,000 characters. Shorten one before analyzing.");
+      return;
+    }
     if (!CASE_TYPES.some((pack) => pack.id === form.caseType) || !COUNTRIES.some((country) => country.code === form.country)) {
       setError("Choose a supported jurisdiction and case type.");
       return;
@@ -113,6 +119,7 @@ export function FighterApp() {
         throw new Error("The analysis response was incomplete. Your text is still here; please try again.");
       }
       if (!controller.signal.aborted) {
+        if (result) setPreviousResult(result);
         setAdditionalDocuments(documents);
         setResult(data as PipelineResult);
         setResultRevision((previous) => previous + 1);
@@ -133,6 +140,8 @@ export function FighterApp() {
     requestRef.current?.abort();
     setForm({ ...DEFAULT_FORM });
     setResult(null);
+    setPreviousResult(null);
+    setIsFictionalSample(false);
     setError(null);
     setNotice(null);
     setFileName(null);
@@ -141,7 +150,7 @@ export function FighterApp() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus"><CaseResult key={resultRevision} result={result} onReset={reset} onRecheck={recheck} rechecking={running} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} /></div>;
+  if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus"><CaseResult key={resultRevision} result={result} previousResult={previousResult} additionalDocuments={additionalDocuments} onRemoveDocument={(id) => { setAdditionalDocuments((previous) => previous.filter((document) => document.id !== id)); setNotice("Exhibit removed from the next recheck. This displayed analysis still reflects its original inputs."); }} isFictionalSample={isFictionalSample} onReset={reset} onRecheck={recheck} rechecking={running} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} /></div>;
 
   return (
     <div className="intake-layout screen-only">
@@ -174,7 +183,7 @@ export function FighterApp() {
             <label htmlFor="company-response" className="company-response-label">Company’s rejection or explanation <span className="required-note">Required</span></label>
             <textarea id="company-response" className="company-response-input" value={form.companyResponse} onChange={(event) => update("companyResponse", event.target.value)} aria-describedby="company-response-hint" placeholder="Paste the company’s actual reply separately. The Rebuttal Lab will investigate its explanation and identify what evidence is missing." required />
             <p className="field-hint" id="company-response-hint">Use the exact reply where possible. Up to 12,000 characters. An explanation is not proof that the company is right.</p>
-            <div className="sample-row"><span>Just looking around?</span><button className="text-button" type="button" onClick={() => { setForm({ ...DEFAULT_FORM, caseType: "subscription-cancel", documentText: SAMPLE, companyResponse: "Your subscription remained active through the next billing date. Our records show that cancellation was not completed before the renewal. We cannot refund the charge." }); setFileName(null); setError(null); setNotice("Fictional sample loaded. The company reply is invented for the example; research results are retrieved live."); }}>Try a fictional example <span aria-hidden="true">→</span></button></div>
+            <div className="sample-row"><span>Just looking around?</span><button className="text-button" type="button" onClick={() => { setForm({ ...DEFAULT_FORM, caseType: "subscription-cancel", documentText: SAMPLE, companyResponse: "Your subscription remained active through the next billing date. Our records show that cancellation was not completed before the renewal. We cannot refund the charge." }); setIsFictionalSample(true); setFileName(null); setError(null); setNotice("Fictional sample loaded. The company reply is invented; research results are retrieved live."); }}>Try a fictional example <span aria-hidden="true">→</span></button></div>
             <details className="preferences"><summary>Personalize your letter <span>Optional</span></summary><div className="form-grid preference-fields"><label htmlFor="user-name">Your name<input id="user-name" autoComplete="name" value={form.userName} maxLength={200} onChange={(event) => update("userName", event.target.value)} placeholder="Or leave a placeholder" /></label><label htmlFor="letter-language">Letter language<input id="letter-language" value="English" readOnly aria-describedby="language-hint" /><span className="field-hint" id="language-hint">English is supported in this version.</span></label><label htmlFor="desired-outcome" className="full-width">What would resolve this?<input id="desired-outcome" value={form.desiredOutcome} maxLength={2000} onChange={(event) => update("desiredOutcome", event.target.value)} placeholder="For example, cancel my plan and review the latest charge" /></label><label htmlFor="reply-deadline" className="full-width">Requested reply period<input id="reply-deadline" value={form.replyDeadline} maxLength={100} onChange={(event) => update("replyDeadline", event.target.value)} aria-describedby="reply-hint" /><span className="field-hint" id="reply-hint">A requested response time, not an established legal deadline.</span></label></div></details>
           </fieldset>
           {error ? <div className="feedback error-feedback" role="alert">{error}</div> : null}

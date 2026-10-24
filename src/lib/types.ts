@@ -8,6 +8,11 @@ export interface ExtractedFacts {
   companyPosition?: string[];
 }
 
+export interface ExtractedFactResult {
+  facts: ExtractedFacts;
+  evidence: Record<string, { documentId: string; label: string; excerpts: string[] }>;
+}
+
 export interface Source {
   id: string;
   url: string;
@@ -58,6 +63,7 @@ export interface EscalationStep {
 
 export interface PipelineResult {
   facts: ExtractedFacts;
+  factEvidence: Record<string, { documentId: string; label: string; excerpts: string[] }>;
   queries: string[];
   sources: Source[];
   findings: Finding[];
@@ -88,6 +94,7 @@ export interface PipelineResult {
     startedAt: string;
     durationMs: number;
     model: string;
+    researchMode: "keyed" | "keyless";
     stageDurations: Record<string, number>;
     packVersion: string;
   };

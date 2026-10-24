@@ -52,14 +52,15 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       return value;
     } finally { stageDurations[name] = Date.now() - start; }
   }
-  const labeledDocuments=[`Consumer evidence:\n${documentText}`,...(companyResponse?[`Company response or rejection:\n${companyResponse}`]:[]),...additionalDocuments.map(doc=>`Additional evidence (${doc.label}, ${doc.id}):\n${doc.text}`)].join("\n\n");
-  const facts = await stage("extract", () => extractFacts(labeledDocuments, pack, signal));
+  const primaryPack={...pack,extractionSchema:pack.extractionSchema.filter(key=>key!=="companyResponse"&&key!=="companyPosition")};
+  const extracted = await stage("extract", () => extractFacts(documentText, primaryPack, signal, true));
+  const {facts,evidence:factEvidence}=extracted;
   const missing = pack.requiredFacts.filter(key => unknown(facts[key]));
   const queries = await stage("plan", () => planQueries(facts, country, pack, signal));
   const research = await stage("research", () => researchWithWarnings(queries, signal, pack.searchPlan.preferredDomains));
   const rebuttalLab=await stage("rebuttal",()=>investigateObjections({facts,companyResponse,country,sources:research.sources,additionalDocuments,signal}));
   const sources=rebuttalLab.sources;
-  const evaluation = await stage("evaluate", () => evaluateFindings(facts, sources, pack, signal));
+  const evaluation = await stage("evaluate", () => evaluateFindings(facts, sources, pack, signal, {companyResponse,additionalDocuments,primaryDocument:documentText,factEvidence}));
   const { findings, unverified, conflicts } = evaluation;
   const unanswered = [...new Set([...evaluation.unanswered, ...missing.map(key => `Please confirm ${key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()} to assess applicability.`)])];
   const score = await stage("score", () => scoreCase(findings, signal));
@@ -78,11 +79,11 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   if (pack.lastReviewed === null) warnings.push("This rule pack has not completed a jurisdiction review. Escalation entries are research suggestions; verify each body and deadline on its official website.");
   if (findings.some(f => f.verified && f.applicability !== "supported")) warnings.push("Matching passages establish traceability only. Applicability and claim interpretation still need review.");
   return {
-    facts, queries: queries.map(q => q.query), sources, findings, score, compensation, letter,
+    facts, factEvidence, queries: queries.map(q => q.query), sources, findings, score, compensation, letter,
     letterCitations: citations, escalation, unanswered, unverified, conflicts,
     warnings: [...new Set(warnings)], country,
     rebuttalLab:{objections:rebuttalLab.objections,actions:rebuttalLab.actions},
-    run: { requestId, startedAt, durationMs: Date.now() - started, stageDurations, model: process.env.NEMOTRON_MODEL || "nvidia/Nemotron-3_5-Lightning", packVersion: pack.version },
+    run: { requestId, startedAt, durationMs: Date.now() - started, stageDurations, model: process.env.NEMOTRON_MODEL || "nvidia/Nemotron-3_5-Lightning", researchMode: process.env.TAVILY_API_KEY ? "keyed" : "keyless", packVersion: pack.version },
   };
 }
 

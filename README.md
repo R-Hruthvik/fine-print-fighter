@@ -7,6 +7,8 @@ This is an information tool, not legal advice. You review and send the letter yo
 See the [project specification](docs/spec.md), [implementation plan](docs/superpowers/plans/2026-10-23-fine-print-fighter.md), and [implementation status](docs/implementation.md).
 Current submission planning: [hackathon readiness research](docs/research/2026-10-24-hackathon-readiness.md) and the [Rebuttal Lab demo storyboard](docs/demo/rebuttal-lab-storyboard.md). The storyboard is a plan, not a recorded or provider-verified demo.
 
+See the [deployment guide](docs/deployment.md) for Node/Vercel setup, server secrets, request limits, and judge access.
+
 ## Run locally
 
 Requires Node.js 22 and npm.
@@ -17,16 +19,16 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-Set `NEBIUS_API_KEY` and `TAVILY_API_KEY` in `.env.local`. Set `NEMOTRON_MODEL` to a model available to your Nebius account. Open the local URL printed by Next.js (normally http://localhost:3000). The interface works without credentials; submitting a case shows a configuration message until the keys are set.
+Set `NEBIUS_API_KEY` in `.env.local`. `TAVILY_API_KEY` is optional: without it, the app uses Tavily's rate-limited keyless access for exploration; set a key for more predictable research quota. Set `NEMOTRON_MODEL` to a model available to your Nebius account. Open the local URL printed by Next.js (normally http://localhost:3000). The interface works without credentials; submitting a case requires the Nebius key.
 
 ## What is implemented
 
 - Three dispute packs: flight delay/cancellation, subscription cancellation, and surprise billing.
 - India, European Union, and United States as initial research scopes, with unresolved applicability questions shown explicitly.
-- Text input up to 30,000 characters and uploads/requests up to 256 KiB.
+- Total case text up to 30,000 characters across the primary document, company response, and added exhibits; company responses and individual exhibits are limited to 12,000 characters each.
 - Grounded extraction, minimized queries, deduplicated research, passage checks, conservative evidence ratings, and visible conflicts and unanswered questions.
 - Rebuttal Lab with a bounded Nemotron function-call loop, allowlisted research/source/evidence tools, inspectable tool activity, and application-verified policy quotations.
-- Separate company-response intake and up to three added evidence documents. Rechecks run from the original inputs; supplied evidence is described as added, not proof of eligibility.
+- Separate company-response intake and up to three added evidence documents with distinct IDs. Rechecks run from the original inputs; supplied evidence is described as added, not proof of eligibility.
 - Deterministic English complaint letters that quote matching research passages and ask the company to confirm applicability. Citation records come from the application source registry.
 - Editable letters with current-text download and print/PDF export, cancellation, and clear-case controls.
 - Runtime request/provider validation, bounded model retries, per-call timeouts, a 120-second analysis deadline, and safe public errors.
@@ -48,7 +50,7 @@ The server pipeline extracts facts, builds initial queries from pack templates, 
 | `NEBIUS_API_KEY` | Server-side model key, required for analysis |
 | `NEBIUS_BASE_URL` | OpenAI-compatible endpoint; default `https://api.tokenfactory.nebius.com/v1` |
 | `NEMOTRON_MODEL` | Model identifier available to your account; default `nvidia/Nemotron-3_5-Lightning` |
-| `TAVILY_API_KEY` | Server-side research key, required for analysis |
+| `TAVILY_API_KEY` | Optional server-side research key; absent means Tavily keyless mode with limited availability |
 | `ENABLE_STAGE_ROUTES` | Optional `true` enables development-only stage routes; always unavailable in production |
 
 Case content stays in browser memory and transient server requests. The model receives document text; Tavily receives minimized queries. Routine application logs contain timing and counts, not case text. Provider and hosting retention policies still apply.

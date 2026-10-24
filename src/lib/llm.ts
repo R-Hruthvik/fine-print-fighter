@@ -1,4 +1,4 @@
-import type { ExtractedFacts, Finding, Source, CaseScore, CompensationResult, EscalationStep, CaseType, Country } from './types';
+import type { ExtractedFacts, ExtractedFactResult, Finding, Source, CaseScore, CompensationResult, EscalationStep, CaseType, Country } from './types';
 import { llmJSON, isObject, stringList, text } from './provider';
 import { constrainScore, resolveLetterCitations, verifyFindings } from './evidence';
 import { safeSearchEntity } from './query';
@@ -12,27 +12,43 @@ function validFacts(value:unknown):value is ExtractedFacts {
   return isObject(value) && Object.keys(value).length<=60 && Object.values(value).every(item => item===null || text(item,5000) || typeof item==='number' && Number.isFinite(item) || stringList(item,30));
 }
 
-export async function extractFacts(documentText:string,pack:{id:CaseType;name:string;extractionSchema:string[]},signal?:AbortSignal):Promise<ExtractedFacts> {
+export function extractFacts(documentText:string,pack:{id:CaseType;name:string;extractionSchema:string[]},signal?:AbortSignal):Promise<ExtractedFacts>;
+export function extractFacts(documentText:string,pack:{id:CaseType;name:string;extractionSchema:string[]},signal:AbortSignal|undefined,withEvidence:true):Promise<ExtractedFactResult>;
+export async function extractFacts(documentText:string,pack:{id:CaseType;name:string;extractionSchema:string[]},signal?:AbortSignal,withEvidence=false):Promise<ExtractedFacts|ExtractedFactResult> {
   const facts=await llmJSON({system:SYSTEM,signal,user:`Extract only stated facts from the document. Return the value exactly as written where possible. Missing values must be null. Include a short disputeSummary and companyPosition (array of exact company quotations). Do not guess missing dates, jurisdiction or currency. Required keys: ${pack.extractionSchema.join(', ')}, disputeSummary, companyPosition.\nDocument data: ${JSON.stringify(documentText)}`},'object of string, finite number, string-array or null facts',validFacts);
   const result:ExtractedFacts={};
-  const normalizedDocument=documentText.replace(/\s+/g,' ').trim();
-  const numericDocument=documentText.replace(/−/g,'-').replace(/-\s+(?=\d)/g,'-').replace(/(?<=\d),(?=\d{3}(?:\D|$))/g,'');
-  const grounded=(value:unknown):value is string | number => {
-    if (typeof value==='string') return value.trim().length>0 && normalizedDocument.includes(value.replace(/\s+/g,' ').trim());
-    if (typeof value==='number' && Number.isFinite(value)) {
-      const pattern=String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-      return new RegExp(`(?<![\\d.,-])${pattern}(?!\\d|[.,]\\d)`).test(numericDocument);
+  const evidence:ExtractedFactResult["evidence"]={};
+  const excerptFor=(value:unknown):string|undefined => {
+    if (typeof value==='string') {
+      if (!value.trim()) return undefined;
+      const pattern=value.trim().replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s+');
+      return documentText.match(new RegExp(pattern))?.[0];
     }
-    return false;
+    if (typeof value==='number' && Number.isFinite(value)) {
+      const [integer,decimal]=String(Math.abs(value)).split('.');
+      const grouped=integer.replace(/\B(?=(\d{3})+(?!\d))/g,',?');
+      const pattern=`(?<![\\d.,-])[-−]?${grouped}${decimal?`\\.${decimal}`:''}(?!\\d|[.,]\\d)`;
+      return documentText.match(new RegExp(pattern))?.[0];
+    }
+    return undefined;
   };
   for (const key of pack.extractionSchema) {
     const value=facts[key];
-    result[key]=Array.isArray(value) ? value.filter(grounded) : grounded(value) ? value : null;
+    if (Array.isArray(value)) {
+      result[key]=value.filter(item=>excerptFor(item)!==undefined);
+      const excerpts=(result[key] as string[]).map(item=>excerptFor(item)).filter((item):item is string=>!!item);
+      if (excerpts.length) evidence[key]={documentId:'primary-document',label:'Primary document',excerpts};
+    } else {
+      const excerpt=excerptFor(value);
+      result[key]=excerpt!==undefined&&(typeof value==='string'||typeof value==='number')?value:null;
+      if (excerpt!==undefined) evidence[key]={documentId:'primary-document',label:'Primary document',excerpts:[excerpt]};
+    }
   }
   result.disputeSummary=typeof facts.disputeSummary==='string' ? `Inferred summary: ${facts.disputeSummary}` : undefined;
   // Exact quotations are useful only if they occur in the uploaded text.
   result.companyPosition=(Array.isArray(facts.companyPosition) ? facts.companyPosition : []).filter(quote => documentText.includes(quote));
-  return result;
+  if (result.companyPosition.length) evidence.companyPosition={documentId:'primary-document',label:'Primary document',excerpts:result.companyPosition};
+  return withEvidence ? {facts:result,evidence} : result;
 }
 
 /** The search boundary receives a small allowlist, never the document or user preferences. */
@@ -56,11 +72,55 @@ interface Evaluation {
 function validEvaluation(value:unknown):value is Evaluation {
   return isObject(value) && Array.isArray(value.findings) && value.findings.length<=20 && value.findings.every(finding => isObject(finding) && text(finding.statement,3000) && ['favors-customer','favors-company','unclear'].includes(String(finding.stance)) && stringList(finding.sourceIds,10) && text(finding.supportingPassage,3000)) && stringList(value.unverified,20) && stringList(value.unanswered,20) && stringList(value.conflicts,20);
 }
-export async function evaluateFindings(facts:ExtractedFacts,sources:Source[],pack:{evaluationPrompt:string},signal?:AbortSignal):Promise<Evaluation> {
-  if (!sources.length) return {findings:[],unverified:[],unanswered:['No usable research sources were available. Applicable rules and policies remain unknown.'],conflicts:[]};
-  const result=await llmJSON({system:SYSTEM,signal,maxTokens:3500,user:`Compare the facts with source text, including points favoring the company. ${pack.evaluationPrompt}\nUse exact string source IDs (s1, s2 etc), never numeric IDs. Each finding needs statement, stance (favors-customer|favors-company|unclear), sourceIds (string array), supportingPassage (one exact continuous quotation present in EVERY referenced source). Do not call a source applicable solely because it mentions a similar dispute. Keep unsupported hypotheses in unverified; missing facts and applicability questions in unanswered; conflicting source claims in conflicts. Return {findings,unverified,unanswered,conflicts}.\nFacts data: ${JSON.stringify(facts)}\nSource data: ${JSON.stringify(sources)}`},'{findings:[{statement,stance,sourceIds,supportingPassage}],unverified:string[],unanswered:string[],conflicts:string[]}',validEvaluation);
+function amountTokens(value:string):{normalized:string;excerpt:string}[] {
+  const currency=/(?:INR|Rs\.?|USD|EUR|GBP|CAD|AUD|\$|€|£|₹)/i;
+  const pattern=/(?:INR|Rs\.?|USD|EUR|GBP|CAD|AUD|\$|€|£|₹)\s*\d[\d,]*(?:\.\d{1,2})?|\d[\d,]*(?:\.\d{1,2})?\s*(?:INR|Rs\.?|USD|EUR|GBP|CAD|AUD|\$|€|£|₹)/gi;
+  return [...value.matchAll(pattern)].map(match=>{
+    const digits=match[0].match(/[\d,]+(?:\.\d{1,2})?/);const raw=match[0].match(currency)?.[0]??"";
+    const code=/^(?:Rs\.?|₹)$/i.test(raw)?"INR":raw==="$"?"USD":raw==="€"?"EUR":raw==="£"?"GBP":raw.replace(/\W/g,"").toUpperCase();
+    return {normalized:`${code}:${(digits?.[0]??"").replace(/,/g,"")}`,excerpt:match[0]};
+  });
+}
+function localAmountConflicts(facts:ExtractedFacts,context:{companyResponse?:string;additionalDocuments?:{id:string;label:string;text:string}[];factEvidence?:Record<string,{documentId:string;label:string;excerpts:string[]}>}):string[] {
+  const currency=typeof facts.currency==="string"?facts.currency.toUpperCase():"";
+  const customerAmounts=Object.entries(facts).filter(([key,value])=>/amount|price|charge|cost|fee|fare|refund|payment/i.test(key)&&value!==null&&value!==undefined).flatMap(([key,value])=>{
+    const tokens=amountTokens(Array.isArray(value)?value.join(" "):String(value));
+    const exactExcerpt=context.factEvidence?.[key]?.excerpts[0];
+    if(typeof value==="number"&&Number.isFinite(value))return [...tokens,{normalized:`${currency}:${value}`,excerpt:exactExcerpt??String(value)}];
+    if(typeof value==="string"&&/^\s*[\d,]+(?:\.\d{1,2})?\s*$/.test(value)&&currency)return [...tokens,{normalized:`${currency}:${value.replace(/,/g,"").trim()}`,excerpt:exactExcerpt??value.trim()}];
+    return tokens;
+  });
+  if(!customerAmounts.length)return [];
+  const documents=[...(context.companyResponse?[{id:"company-response",label:"Company response",text:context.companyResponse}]:[]),...(context.additionalDocuments??[]).map(({id,label,text})=>({id,label,text}))];
+  const conflicts:string[]=[];
+  for(const document of documents){
+    const amounts=amountTokens(document.text);
+    const differences=amounts.filter(item=>!customerAmounts.some(customer=>customer.normalized===item.normalized));
+    if(differences.length)conflicts.push(`Amount conflict: primary document records ${customerAmounts.map(item=>item.excerpt).join(", ")}; ${document.label} [${document.id}] states ${differences.map(item=>`“${item.excerpt}”`).join(", ")}. Review the original documents; neither value is independently verified.`);
+  }
+  return [...new Set(conflicts)];
+}
+function localDateConflicts(context:{primaryDocument?:string;companyResponse?:string;additionalDocuments?:{id:string;label:string;text:string}[]}):string[] {
+  if(!context.primaryDocument)return [];
+  const datePattern=/\b(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s*,?\s*\d{4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?\s*,?\s*\d{4})\b/gi;
+  const eventPatterns:{name:string;pattern:RegExp}[]=[{name:"cancellation or renewal",pattern:/cancel|cancellation|renewal|subscription/i},{name:"billing or payment",pattern:/bill|charge|payment|invoice|fee/i},{name:"flight",pattern:/flight|departure|arrival|delay/i}];
+  const mentions=(text:string)=>[...text.matchAll(datePattern)].map(match=>{const date=match[0];const start=match.index??0;const around=text.slice(Math.max(0,start-100),Math.min(text.length,start+date.length+100));let day:string;try{day=new Date(Date.parse(date)).toISOString().slice(0,10);}catch{day=date.toLowerCase().replace(/[^a-z0-9]/g,"");}const event=eventPatterns.find(item=>item.pattern.test(around))?.name;return {date,day,event};}).filter(item=>item.event);
+  const primary=mentions(context.primaryDocument);
+  const documents=[...(context.companyResponse?[{id:"company-response",label:"Company response",text:context.companyResponse}]:[]),...(context.additionalDocuments??[]).map(({id,label,text})=>({id,label,text}))];
+  return documents.flatMap(document=>{
+    const differences=mentions(document.text).filter(item=>primary.some(other=>other.event===item.event&&other.day!==item.day));
+    return differences.length?[`Potential date conflict: primary document records ${primary.filter(item=>differences.some(difference=>difference.event===item.event)).map(item=>`“${item.date}” for ${item.event}`).join(", ")}; ${document.label} [${document.id}] records ${differences.map(item=>`“${item.date}” for ${item.event}`).join(", ")}. Review the surrounding text to confirm whether these dates refer to the same event.`]:[];
+  });
+}
+export async function evaluateFindings(facts:ExtractedFacts,sources:Source[],pack:{evaluationPrompt:string},signal?:AbortSignal,context:{companyResponse?:string;additionalDocuments?:{id:string;label:string;text:string}[];primaryDocument?:string;factEvidence?:Record<string,{documentId:string;label:string;excerpts:string[]}>}={}):Promise<Evaluation> {
+  const localConflicts=localAmountConflicts(facts,context);
+  const documentConflicts=localDateConflicts(context);
+  const deterministicConflicts=[...localConflicts,...documentConflicts];
+  if (!sources.length) return {findings:[],unverified:[],unanswered:['No usable research sources were available. Applicable rules and policies remain unknown.'],conflicts:deterministicConflicts};
+  const responseContext={companyResponse:context.companyResponse ?? "",additionalDocuments:(context.additionalDocuments ?? []).map(({id,label,text})=>({id,label,text}))};
+  const result=await llmJSON({system:SYSTEM,signal,maxTokens:3500,user:`Compare values in the primary document with source text, including points favoring the company. ${pack.evaluationPrompt}\nThe primary-document values below come only from the user's uploaded or pasted original document. Do not assume every sentence was written by the consumer; refer to the document and its exact excerpt. The separately labeled company response and additional exhibits are contextual evidence and must never replace primary-document values. If they disagree (especially on dates, amounts, or cancellation status), list the disagreement in conflicts and preserve each source's identity. Use exact string source IDs (s1, s2 etc), never numeric IDs. Each finding needs statement, stance (favors-customer|favors-company|unclear), sourceIds (string array), supportingPassage (one exact continuous quotation present in EVERY referenced source). Do not call a source applicable solely because it mentions a similar dispute. Keep unsupported hypotheses in unverified; missing facts and applicability questions in unanswered; conflicting source claims in conflicts. Return {findings,unverified,unanswered,conflicts}.\nPrimary-document values: ${JSON.stringify(facts)}\nSeparate company and exhibit context (IDs retained): ${JSON.stringify(responseContext)}\nSource data: ${JSON.stringify(sources)}`},'{findings:[{statement,stance,sourceIds,supportingPassage}],unverified:string[],unanswered:string[],conflicts:string[]}',validEvaluation);
   const findings=verifyFindings(result.findings,sources);
-  return {...result,findings,unverified:[...result.unverified,...findings.filter(finding => !finding.verified).map(finding => finding.statement)],unanswered:[...new Set([...result.unanswered,'Confirm the policy version, location, dates, and eligibility conditions before relying on a finding.'])]};
+  return {...result,findings,unverified:[...result.unverified,...findings.filter(finding => !finding.verified).map(finding => finding.statement)],unanswered:[...new Set([...result.unanswered,'Confirm the policy version, location, dates, and eligibility conditions before relying on a finding.'])],conflicts:[...new Set([...result.conflicts,...deterministicConflicts])]};
 }
 
 export async function scoreCase(findings:Finding[],signal?:AbortSignal):Promise<CaseScore> {

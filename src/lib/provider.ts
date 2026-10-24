@@ -7,8 +7,8 @@ export class ProviderError extends Error {
 }
 
 export function requireProviderConfiguration(): void {
-  if (!process.env.NEBIUS_API_KEY || !process.env.TAVILY_API_KEY) {
-    throw new ProviderError('Analysis is not configured. Set the Nebius and Tavily API keys on the server.',503,'CONFIGURATION_MISSING',false);
+  if (!process.env.NEBIUS_API_KEY) {
+    throw new ProviderError('Analysis is not configured. Set the Nebius API key on the server.',503,'CONFIGURATION_MISSING',false);
   }
 }
 

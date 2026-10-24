@@ -7,13 +7,13 @@ export interface ResearchQuery {query:string;targets:string}
 
 export async function tavilySearch(query:string,maxResults=5,signal?:AbortSignal,preferredDomains:string[]=[]):Promise<TavilyResult[]> {
   const key=process.env.TAVILY_API_KEY;
-  if (!key) throw new ProviderError('Research is not configured on the server.',503,'CONFIGURATION_MISSING',false);
   const timeout=signal ? AbortSignal.any([signal,AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000);
   try {
     const response=await fetch('https://api.tavily.com/search',{
-      method:'POST',signal:timeout,headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({api_key:key,query,max_results:Math.min(5,Math.max(1,maxResults)),search_depth:'basic',include_answer:false,include_images:false,include_raw_content:false,...(preferredDomains.length ? {include_domains:preferredDomains.slice(0,10)} : {})}),
+      method:'POST',signal:timeout,headers:{'Content-Type':'application/json',...(!key ? {'X-Tavily-Access-Mode':'keyless'} : {})},
+      body:JSON.stringify({...(key ? {api_key:key} : {}),query,max_results:Math.min(5,Math.max(1,maxResults)),search_depth:'basic',include_answer:false,include_images:false,include_raw_content:false,...(preferredDomains.length ? {include_domains:preferredDomains.slice(0,10)} : {})}),
     });
+    if (response.status===429) throw new ProviderError(key?'Tavily research reached its configured rate limit.':'Tavily keyless research is rate-limited. Add TAVILY_API_KEY for a predictable quota or retry later.',429,'RESEARCH_RATE_LIMITED',true);
     if (!response.ok) throw new ProviderError('Research is temporarily unavailable.',502,'RESEARCH_UNAVAILABLE',true);
     const data:unknown=await response.json();
     if (!isObject(data) || !Array.isArray(data.results)) throw new ProviderError('Research returned an invalid response.',502,'INVALID_RESEARCH_RESPONSE',true);
@@ -26,16 +26,15 @@ export async function tavilySearch(query:string,maxResults=5,signal?:AbortSignal
 }
 
 export async function researchWithWarnings(queries:ResearchQuery[],signal?:AbortSignal,preferredDomains:string[]=[]):Promise<{sources:Source[];warnings:string[]}> {
-  if (!process.env.TAVILY_API_KEY) throw new ProviderError('Research is not configured on the server.',503,'CONFIGURATION_MISSING',false);
   const bounded=queries.slice(0,6);
-  const results:{query:ResearchQuery;results:TavilyResult[];failed:boolean}[]=[];
+  const results:{query:ResearchQuery;results:TavilyResult[];failed:boolean;rateLimited?:boolean}[]=[];
   // Three requests at a time; preserving input order keeps IDs deterministic.
   for (let offset=0;offset<bounded.length;offset+=3) {
     const batch=await Promise.all(bounded.slice(offset,offset+3).map(async query => {
       try { return {query,results:await tavilySearch(query.query,5,signal,preferredDomains),failed:false}; }
       catch (error) {
         if (signal?.aborted || error instanceof ProviderError && error.status===503) throw error;
-        return {query,results:[],failed:true};
+        return {query,results:[],failed:true,rateLimited:error instanceof ProviderError&&error.code==='RESEARCH_RATE_LIMITED'};
       }
     }));
     results.push(...batch);
@@ -45,7 +44,7 @@ export async function researchWithWarnings(queries:ResearchQuery[],signal?:Abort
   const warnings:string[]=[];
   const retrievedAt=new Date().toISOString();
   for (const entry of results) {
-    if (entry.failed) warnings.push('A research search was unavailable. Evidence coverage may be incomplete.');
+    if (entry.failed) warnings.push(entry.rateLimited&&!process.env.TAVILY_API_KEY?'Tavily keyless access reached its rate limit. Add TAVILY_API_KEY for a predictable quota or retry later; evidence coverage is incomplete.':entry.rateLimited?'Tavily reached its configured rate limit. Retry later; evidence coverage is incomplete.':'A research search was unavailable. Evidence coverage may be incomplete.');
     for (const item of entry.results) {
       const canonical=new URL(item.url);canonical.hash='';
       const url=canonical.toString();

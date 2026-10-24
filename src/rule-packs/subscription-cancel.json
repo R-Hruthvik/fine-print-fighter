@@ -8,7 +8,6 @@
     "signupDate",
     "billingDates",
     "cancellationAttempts",
-    "companyResponse",
     "chargesAfterCancellation",
     "currency"
   ],
