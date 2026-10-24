@@ -17,10 +17,11 @@ function Notes({ title, items }: { title: string; items: string[] }) {
 }
 
 type AdditionalDocument = { id: string; label: string; text: string };
-export function CaseResult({ result, previousResult = null, additionalDocuments = [], onRemoveDocument, isFictionalSample = false, onReset, onRecheck, rechecking = false, progressEvents = [], recheckError, recheckNotice, onCancelRecheck }: {
+export function CaseResult({ result, previousResult = null, additionalDocuments = [], exhibitRemovalPending = false, onRemoveDocument, isFictionalSample = false, onReset, onRecheck, rechecking = false, progressEvents = [], recheckError, recheckNotice, onCancelRecheck }: {
   result: PipelineResult;
   previousResult?: PipelineResult | null;
   additionalDocuments?: AdditionalDocument[];
+  exhibitRemovalPending?: boolean;
   onRemoveDocument?: (id: string) => void;
   isFictionalSample?: boolean;
   onReset: () => void;
@@ -98,6 +99,9 @@ export function CaseResult({ result, previousResult = null, additionalDocuments 
               <p className="section-description">Examine the company’s possible objection, see the missing evidence, and add a specific document to recheck the record. New evidence may support either side.</p>
               {recheckNotice ? <p className="feedback notice-feedback" role="status">{recheckNotice}</p> : null}
               {additionalDocuments.length ? <div className="retained-exhibits"><h3>Exhibits included in this review ({additionalDocuments.length}/3)</h3><ul>{additionalDocuments.map((document) => <li key={document.id}><span>{document.label} · {document.id}</span><button className="text-button" type="button" disabled={rechecking} onClick={() => onRemoveDocument?.(document.id)}>Remove from next recheck</button></li>)}</ul></div> : null}
+              {recheckError ? <p className="feedback error-feedback" role="alert">{recheckError}</p> : null}
+              {exhibitRemovalPending ? <div className="exhibit-removal-pending"><div><strong>Removed exhibits are excluded from the next analysis.</strong><p>The current result still includes them until a recheck succeeds.</p></div><button className="primary-button" type="button" disabled={rechecking} onClick={() => void onRecheck([])}>{rechecking ? "Recheck in progress" : "Recheck remaining evidence"}<span aria-hidden="true">→</span></button></div> : null}
+              {rechecking ? <div className="recheck-progress"><div><p className="recheck-status" role="status"><span className="activity-indicator" aria-hidden="true" />Rechecking the supplied record. Your previous analysis stays visible until the revision is ready.</p><AnalysisProgress events={progressEvents} recheck /></div><button className="secondary-button" type="button" onClick={onCancelRecheck}>Cancel recheck</button></div> : null}
               {rebuttalLab?.objections.length ? <div className="objection-list">{rebuttalLab.objections.map((objection, index) => <article className="objection-card" key={objection.id}>
                 <div className="objection-topline"><span className="small-label">Objection {String(index + 1).padStart(2, "0")}</span><span className="status-label">{objection.status === "document-provided" ? "Document provided · review required" : objection.status === "unsupported" ? "Unsupported by the record" : "Evidence still needed"}</span></div>
                 <h3>{objection.hypothesis}</h3>
@@ -112,11 +116,8 @@ export function CaseResult({ result, previousResult = null, additionalDocuments 
               {selectedObjection ? <form id="rebuttal-evidence-form" className="rebuttal-evidence-form" onSubmit={submitEvidence} aria-busy={rechecking}>
                 <h3>What changes this objection?</h3><p className="field-hint">For: {rebuttalLab?.objections.find((item) => item.id === selectedObjection)?.hypothesis}</p>
                 <fieldset disabled={rechecking}><legend className="sr-only">Additional evidence for the selected objection</legend><label htmlFor="evidence-label">Exhibit label<input id="evidence-label" value={selectedDraft.label} onChange={(event) => setEvidenceDrafts((previous) => ({...previous,[selectedObjection!]:{...selectedDraft,label:event.target.value}}))} maxLength={100} placeholder="For example, cancellation confirmation" required /></label><label htmlFor="additional-evidence">Additional document text<textarea id="additional-evidence" value={selectedDraft.text} onChange={(event) => setEvidenceDrafts((previous) => ({...previous,[selectedObjection!]:{...selectedDraft,text:event.target.value}}))} placeholder="Paste the exact confirmation, policy excerpt, or reply. Include relevant dates and wording." aria-describedby="additional-evidence-hint" required /></label><p id="additional-evidence-hint" className="field-hint">{selectedDraft.text.length.toLocaleString("en-IN")} / 12,000 characters per exhibit. The form keeps longer pastes intact and explains when they exceed the limit. All case documents together have a 30,000 character limit. Download any letter edits before rechecking; the new result creates a fresh draft.</p></fieldset>
-                {evidenceError || recheckError ? <p className="feedback error-feedback" role="alert">{evidenceError || recheckError}</p> : null}
-                {recheckNotice ? <p className="feedback notice-feedback" role="status">{recheckNotice}</p> : null}
-                {rechecking ? <p className="recheck-status" role="status"><span className="activity-indicator" aria-hidden="true" />Rechecking the supplied record. Your previous analysis stays visible until the revision is ready.</p> : null}
-                {rechecking ? <AnalysisProgress events={progressEvents} recheck /> : null}
-                <div className="letter-actions"><button className="primary-button" type="submit" disabled={rechecking}>{rechecking ? "Recheck in progress" : "Recheck with this evidence"}<span aria-hidden="true">→</span></button>{rechecking ? <button className="secondary-button" type="button" onClick={onCancelRecheck}>Cancel recheck</button> : <button className="text-button" type="button" onClick={closeEvidenceForm}>Close evidence form</button>}</div>
+                {evidenceError ? <p className="feedback error-feedback" role="alert">{evidenceError}</p> : null}
+                <div className="letter-actions"><button className="primary-button" type="submit" disabled={rechecking}>Recheck with this evidence<span aria-hidden="true">→</span></button>{!rechecking ? <button className="text-button" type="button" onClick={closeEvidenceForm}>Close evidence form</button> : null}</div>
               </form> : null}
             </section>
 

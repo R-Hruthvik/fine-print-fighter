@@ -82,6 +82,7 @@ export function FighterApp() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [additionalDocuments, setAdditionalDocuments] = useState<{ id: string; label: string; text: string }[]>([]);
+  const [exhibitRemovalPending, setExhibitRemovalPending] = useState(false);
   const [resultRevision, setResultRevision] = useState(0);
   const [fileName, setFileName] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -167,6 +168,7 @@ export function FighterApp() {
       if (!controller.signal.aborted) {
         if (result) setPreviousResult(result);
         setAdditionalDocuments(documents);
+        setExhibitRemovalPending(false);
         setProgressEvents([]);
         setResult(data as PipelineResult);
         setResultRevision((previous) => previous + 1);
@@ -194,11 +196,12 @@ export function FighterApp() {
     setProgressEvents([]);
     setFileName(null);
     setAdditionalDocuments([]);
+    setExhibitRemovalPending(false);
     if (fileRef.current) fileRef.current.value = "";
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus"><CaseResult key={resultRevision} result={result} previousResult={previousResult} additionalDocuments={additionalDocuments} onRemoveDocument={(id) => { setAdditionalDocuments((previous) => previous.filter((document) => document.id !== id)); setNotice("Exhibit removed from the next recheck. This displayed analysis still reflects its original inputs."); }} isFictionalSample={isFictionalSample} onReset={reset} onRecheck={recheck} rechecking={running} progressEvents={progressEvents} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} /></div>;
+  if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus"><CaseResult key={resultRevision} result={result} previousResult={previousResult} additionalDocuments={additionalDocuments} exhibitRemovalPending={exhibitRemovalPending} onRemoveDocument={(id) => { setAdditionalDocuments((previous) => previous.filter((document) => document.id !== id)); setExhibitRemovalPending(true); setNotice("The displayed analysis still includes this exhibit. Recheck to analyze the remaining evidence."); }} isFictionalSample={isFictionalSample} onReset={reset} onRecheck={recheck} rechecking={running} progressEvents={progressEvents} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} /></div>;
 
   return (
     <div className="intake-layout screen-only">
