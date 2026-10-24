@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { PipelineResult } from "@/lib/types";
 import { COUNTRIES } from "@/lib/packs";
 import { exportLetter, safeUrl } from "./workflow";
@@ -27,24 +27,34 @@ export function CaseResult({ result, onReset, onRecheck, rechecking = false, rec
 }) {
   const [letter, setLetter] = useState(result.letter);
   const [selectedObjection, setSelectedObjection] = useState<string | null>(null);
-  const [evidenceLabel, setEvidenceLabel] = useState("");
-  const [evidenceText, setEvidenceText] = useState("");
+  const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, {label:string;text:string}>>({});
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const rebuttalLab = result.rebuttalLab;
+  const selectedDraft = selectedObjection ? evidenceDrafts[selectedObjection] ?? {label:"",text:""} : {label:"",text:""};
+
+  useEffect(() => {
+    if (selectedObjection) document.getElementById("evidence-label")?.focus();
+  }, [selectedObjection]);
+
+  function closeEvidenceForm() {
+    const previous = selectedObjection;
+    setSelectedObjection(null);
+    if (previous) requestAnimationFrame(() => document.getElementById(`add-evidence-${previous}`)?.focus());
+  }
 
   async function submitEvidence(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (rechecking || !selectedObjection) return;
-    if (!evidenceLabel.trim() || !evidenceText.trim()) {
+    if (!selectedDraft.label.trim() || !selectedDraft.text.trim()) {
       setEvidenceError("Give this exhibit a label and paste the additional evidence.");
       return;
     }
-    if (evidenceText.length > 30_000) {
+    if (selectedDraft.text.length > 30_000) {
       setEvidenceError("Additional evidence exceeds 30,000 characters. Shorten it before rechecking.");
       return;
     }
     setEvidenceError(null);
-    await onRecheck([{ id: `${selectedObjection}-exhibit`, label: evidenceLabel.trim(), text: evidenceText }]);
+    await onRecheck([{ id: `${selectedObjection}-exhibit`, label: selectedDraft.label.trim(), text: selectedDraft.text }]);
   }
   const sourceMap = new Map(result.sources.map((source) => [source.id, source]));
   const country = COUNTRIES.find((item) => item.code === result.country)?.label ?? "Selected jurisdiction";
@@ -82,18 +92,19 @@ export function CaseResult({ result, onReset, onRecheck, rechecking = false, rec
                 <div className="objection-topline"><span className="small-label">Objection {String(index + 1).padStart(2, "0")}</span><span className="status-label">{objection.status === "document-provided" ? "Document provided · review required" : objection.status === "unsupported" ? "Unsupported by the record" : "Evidence still needed"}</span></div>
                 <h3>{objection.hypothesis}</h3>
                 {objection.supportingPassage ? <div className="objection-excerpt"><span className="small-label">Supporting excerpt</span><blockquote>“{objection.supportingPassage}”</blockquote></div> : <p className="field-hint">No supporting excerpt has been established for this hypothesis.</p>}
+                {objection.evidenceMatch ? <div className="objection-excerpt"><span className="small-label">Potentially relevant added evidence · review this match</span><p className="field-hint">{objection.evidenceMatch.label} · {objection.evidenceMatch.documentId}</p><blockquote>“{objection.evidenceMatch.passage}”</blockquote></div> : null}
                 {objection.sourceIds.length ? <div className="finding-sources">{objection.sourceIds.map((id) => sourceMap.has(id) ? <a key={id} href={`#source-${id}`}>Source [{id}]</a> : <span key={id}>Reference [{id}] · not in the research registry</span>)}</div> : null}
                 <div className="objection-gap"><h4>Evidence gap</h4>{objection.evidenceNeeded.length ? <ul>{objection.evidenceNeeded.map((item, itemIndex) => <li key={itemIndex}>{item}</li>)}</ul> : <p>No additional evidence request was identified. Review the supporting record before relying on this conclusion.</p>}</div>
-                <button className="secondary-button" type="button" aria-expanded={selectedObjection === objection.id} aria-controls="rebuttal-evidence-form" disabled={rechecking} onClick={() => { setSelectedObjection(objection.id); setEvidenceLabel(""); setEvidenceText(""); setEvidenceError(null); }}>Add evidence for this objection <span aria-hidden="true">→</span></button>
+                <button id={`add-evidence-${objection.id}`} className="secondary-button" type="button" aria-expanded={selectedObjection === objection.id} aria-controls="rebuttal-evidence-form" disabled={rechecking} onClick={() => { setSelectedObjection(objection.id); setEvidenceError(null); }}>Add evidence for this objection <span aria-hidden="true">→</span></button>
               </article>)}</div> : <p className="empty-note">No grounded objection was identified. Add the company’s actual rejection or explanation when starting a case to investigate it.</p>}
               {rebuttalLab?.actions.length ? <details className="investigation-actions" open><summary>Investigation actions <span>{rebuttalLab.actions.length}</span></summary><ol>{rebuttalLab.actions.map((action, index) => <li key={`${action.tool}-${index}`}><div className="action-topline"><strong>{action.tool.replaceAll("_", " ")}</strong><span>{(action.durationMs / 1000).toFixed(1)}s</span></div><p>{action.summary}</p>{action.sourceIds.length ? <div className="finding-sources">{action.sourceIds.map((id) => sourceMap.has(id) ? <a key={id} href={`#source-${id}`}>Source [{id}]</a> : <span key={id}>Reference [{id}]</span>)}</div> : null}</li>)}</ol></details> : null}
               {selectedObjection ? <form id="rebuttal-evidence-form" className="rebuttal-evidence-form" onSubmit={submitEvidence} aria-busy={rechecking}>
                 <h3>What changes this objection?</h3><p className="field-hint">For: {rebuttalLab?.objections.find((item) => item.id === selectedObjection)?.hypothesis}</p>
-                <fieldset disabled={rechecking}><legend className="sr-only">Additional evidence for the selected objection</legend><label htmlFor="evidence-label">Exhibit label<input id="evidence-label" value={evidenceLabel} onChange={(event) => setEvidenceLabel(event.target.value)} maxLength={160} placeholder="For example, cancellation confirmation" required /></label><label htmlFor="additional-evidence">Additional document text<textarea id="additional-evidence" value={evidenceText} onChange={(event) => setEvidenceText(event.target.value)} placeholder="Paste the exact confirmation, policy excerpt, or reply. Include relevant dates and wording." aria-describedby="additional-evidence-hint" required /></label><p id="additional-evidence-hint" className="field-hint">{evidenceText.length.toLocaleString("en-IN")} / 30,000 characters. The recheck uses your original document, the company’s explanation, and your added evidence. It produces a new draft; export any edits you want to keep first.</p></fieldset>
+                <fieldset disabled={rechecking}><legend className="sr-only">Additional evidence for the selected objection</legend><label htmlFor="evidence-label">Exhibit label<input id="evidence-label" value={selectedDraft.label} onChange={(event) => setEvidenceDrafts((previous) => ({...previous,[selectedObjection!]:{...selectedDraft,label:event.target.value}}))} maxLength={160} placeholder="For example, cancellation confirmation" required /></label><label htmlFor="additional-evidence">Additional document text<textarea id="additional-evidence" value={selectedDraft.text} onChange={(event) => setEvidenceDrafts((previous) => ({...previous,[selectedObjection!]:{...selectedDraft,text:event.target.value}}))} placeholder="Paste the exact confirmation, policy excerpt, or reply. Include relevant dates and wording." aria-describedby="additional-evidence-hint" required /></label><p id="additional-evidence-hint" className="field-hint">{selectedDraft.text.length.toLocaleString("en-IN")} / 30,000 characters. The recheck uses your original document, the company’s explanation, and your added evidence. It produces a new draft; export any edits you want to keep first.</p></fieldset>
                 {evidenceError || recheckError ? <p className="feedback error-feedback" role="alert">{evidenceError || recheckError}</p> : null}
                 {recheckNotice ? <p className="feedback notice-feedback" role="status">{recheckNotice}</p> : null}
                 {rechecking ? <p className="recheck-status" role="status"><span className="activity-indicator" aria-hidden="true" />Rechecking the supplied record. Your previous analysis stays visible until the revision is ready.</p> : null}
-                <div className="letter-actions"><button className="primary-button" type="submit" disabled={rechecking}>{rechecking ? "Recheck in progress" : "Recheck with this evidence"}<span aria-hidden="true">→</span></button>{rechecking ? <button className="secondary-button" type="button" onClick={onCancelRecheck}>Cancel recheck</button> : <button className="text-button" type="button" onClick={() => setSelectedObjection(null)}>Close evidence form</button>}</div>
+                <div className="letter-actions"><button className="primary-button" type="submit" disabled={rechecking}>{rechecking ? "Recheck in progress" : "Recheck with this evidence"}<span aria-hidden="true">→</span></button>{rechecking ? <button className="secondary-button" type="button" onClick={onCancelRecheck}>Cancel recheck</button> : <button className="text-button" type="button" onClick={closeEvidenceForm}>Close evidence form</button>}</div>
               </form> : null}
             </section>
 

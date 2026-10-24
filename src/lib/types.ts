@@ -76,6 +76,7 @@ export interface PipelineResult {
       hypothesis: string;
       supportingPassage: string;
       evidenceNeeded: string[];
+      evidenceMatch?: { documentId: string; label: string; passage: string };
       status: "unresolved" | "document-provided" | "unsupported";
       sourceIds: string[];
     }[];

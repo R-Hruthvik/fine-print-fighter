@@ -1,6 +1,7 @@
 import type { ExtractedFacts, Finding, Source, CaseScore, CompensationResult, EscalationStep, CaseType, Country } from './types';
 import { llmJSON, isObject, stringList, text } from './provider';
 import { constrainScore, resolveLetterCitations, verifyFindings } from './evidence';
+import { safeSearchEntity } from './query';
 
 export { llmJSON } from './provider';
 export type { LLMCallOptions } from './provider';
@@ -37,10 +38,7 @@ export async function extractFacts(documentText:string,pack:{id:CaseType;name:st
 /** The search boundary receives a small allowlist, never the document or user preferences. */
 export async function planQueries(facts:ExtractedFacts,country:Country,pack:{searchPlan:{queries:string[]}},signal?:AbortSignal):Promise<{query:string;targets:string}[]> {
   signal?.throwIfAborted();
-  const entity=(value:unknown,fallback:string):string => {
-    if (typeof value!=='string' || !value.trim() || /@|\b(account|address|reference|booking|street|road|avenue|boulevard|postal|postcode|zip|suite|apartment)\b/i.test(value) || (value.match(/\d/g)?.length ?? 0)>=7) return fallback;
-    return value.replace(/[^\p{L}\p{N}\s&.'-]/gu,' ').replace(/\s+/g,' ').trim().slice(0,100) || fallback;
-  };
+  const entity=(value:unknown,fallback:string):string => safeSearchEntity(value,fallback);
   const company=entity(facts.company ?? facts.airline,'company');
   const values:Record<string,string>={country,company,airline:company,sector:entity(facts.sector,'billing'),flightNumber:'',date:''};
   return pack.searchPlan.queries.slice(0,6).map((template,index) => ({

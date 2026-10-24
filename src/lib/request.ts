@@ -19,10 +19,13 @@ export function parseCaseRequest(input: unknown) {
   const additionalDocuments = b.additionalDocuments === undefined ? [] : b.additionalDocuments;
   if (!Array.isArray(additionalDocuments) || additionalDocuments.length > 3) throw new RequestError(400, "INVALID_REQUEST", "Provide up to three additional evidence documents.");
   let additionalLength = 0;
+  const additionalIds = new Set<string>();
   const parsedDocuments = additionalDocuments.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) throw new RequestError(400, "INVALID_REQUEST", "Each additional document must include an ID, label, and text.");
     const doc = item as Record<string, unknown>;
     if (typeof doc.id !== "string" || !/^[a-zA-Z0-9_-]{1,40}$/.test(doc.id) || typeof doc.label !== "string" || !doc.label.trim() || doc.label.length > 100 || typeof doc.text !== "string" || !doc.text.trim()) throw new RequestError(400, "INVALID_REQUEST", "Each additional document must include a valid ID, label, and text.");
+    if (additionalIds.has(doc.id)) throw new RequestError(400, "INVALID_REQUEST", "Additional evidence document IDs must be unique.");
+    additionalIds.add(doc.id);
     if (doc.text.length > 12000) throw new RequestError(413, "INPUT_TOO_LARGE", "An additional evidence document exceeds 12,000 characters.");
     additionalLength += doc.text.length;
     return { id: doc.id, label: doc.label.trim(), text: doc.text };
