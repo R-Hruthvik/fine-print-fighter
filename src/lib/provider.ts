@@ -35,6 +35,7 @@ export async function llmToolTurn(options: { messages: Record<string, unknown>[]
   } catch (error) {
     if (error instanceof ProviderError) throw error;
     if (options.signal?.aborted) throw new ProviderError('The analysis deadline was exceeded.',504,'ANALYSIS_TIMEOUT',true);
+    if (timeout.aborted) throw new ProviderError('The investigation model timed out. Please try again.',504,'PROVIDER_TIMEOUT',true);
     throw new ProviderError('The investigation model could not be reached. Please try again.',502,'MODEL_UNAVAILABLE',true);
   }
 }
