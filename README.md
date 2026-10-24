@@ -5,6 +5,7 @@ Fine Print Fighter’s Rebuttal Lab stress-tests a consumer dispute against the 
 This is an information tool, not legal advice. You review and send the letter yourself.
 
 See the [project specification](docs/spec.md), [implementation plan](docs/superpowers/plans/2026-10-23-fine-print-fighter.md), and [implementation status](docs/implementation.md).
+Current submission planning: [hackathon readiness research](docs/research/2026-10-24-hackathon-readiness.md) and the [Rebuttal Lab demo storyboard](docs/demo/rebuttal-lab-storyboard.md). The storyboard is a plan, not a recorded or provider-verified demo.
 
 ## Run locally
 
