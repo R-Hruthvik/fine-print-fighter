@@ -7,7 +7,7 @@
         "rule": "overused-font",
         "value": "arial",
         "createdAt": "2026-10-24T06:12:57.315Z",
-        "reason": "The existing trust-first interface deliberately uses a dependable system font for body and print text, paired with Georgia editorial headings."
+        "reason": "Current typography imports IBM Plex Sans for interface text and uses Georgia for editorial headings; Arial is not explicitly selected in the stylesheet, so this stale fallback finding does not describe the current design."
       },
       {
         "rule": "side-tab",
