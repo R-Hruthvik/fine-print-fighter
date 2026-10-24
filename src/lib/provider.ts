@@ -6,6 +6,11 @@ export class ProviderError extends Error {
   }
 }
 
+function providerHttpError(status:number):ProviderError {
+  if(status===402) return new ProviderError('Analysis is unavailable because the configured provider account needs attention. Check its credits and model access.',502,'PROVIDER_ACCOUNT_ACTION_REQUIRED',false);
+  return new ProviderError('The analysis model is unavailable. Please try again later.',502,'MODEL_UNAVAILABLE',status===429 || status>=500);
+}
+
 export function requireProviderConfiguration(): void {
   if (!process.env.NEBIUS_API_KEY) {
     throw new ProviderError('Analysis is not configured. Set the Nebius API key on the server.',503,'CONFIGURATION_MISSING',false);
@@ -28,7 +33,7 @@ export async function llmToolTurn(options: { messages: Record<string, unknown>[]
   const timeout=options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(25_000)]) : AbortSignal.timeout(25_000);
   try {
     const response=await fetch(`${base}/chat/completions`,{method:'POST',signal:timeout,headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify({model:process.env.NEMOTRON_MODEL || 'nvidia/Nemotron-3_5-Lightning',temperature:0.1,max_tokens:1800,messages:options.messages,tools:options.tools,tool_choice:'auto'})});
-    if (!response.ok) throw new ProviderError('The investigation model is unavailable. Please try again later.',502,'MODEL_UNAVAILABLE',response.status===429 || response.status>=500);
+    if (!response.ok) throw providerHttpError(response.status);
     const envelope:unknown=await response.json();
     if (!isObject(envelope) || !Array.isArray(envelope.choices) || !isObject(envelope.choices[0]) || !isObject(envelope.choices[0].message)) throw new ProviderError('The investigation model returned an invalid response.',502,'INVALID_MODEL_RESPONSE',true);
     return envelope.choices[0].message;
@@ -63,7 +68,7 @@ export async function llmJSON<T>(options:LLMCallOptions, schemaHint:string, vali
       if (!response.ok) {
         const transient=response.status===429 || response.status>=500;
         if (transient && attempt+1<attempts) continue;
-        throw new ProviderError('The analysis provider is unavailable. Please try again later.',502,'MODEL_UNAVAILABLE',transient);
+        throw providerHttpError(response.status);
       }
       const envelope:unknown=await response.json();
       const content=getContent(envelope);
