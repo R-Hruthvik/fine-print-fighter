@@ -1,4 +1,4 @@
-import type { PipelineResult, RulePack, Country, ExtractedFacts, CompensationResult } from "./types";
+import type { PipelineResult, RulePack, Country, ExtractedFacts, CompensationResult, AnalysisProgressEvent, AnalysisStage } from "./types";
 import { extractFacts, planQueries, evaluateFindings, scoreCase, draftLetter, escalateLadder } from "./llm";
 import { researchWithWarnings } from "./tavily";
 import { ProviderError, requireProviderConfiguration } from "./provider";
@@ -16,6 +16,7 @@ export interface PipelineOptions {
   replyDeadline?: string;
   signal?: AbortSignal;
   requestId?: string;
+  onProgress?: (event: AnalysisProgressEvent) => void;
 }
 
 function unknown(value: unknown): boolean {
@@ -43,13 +44,22 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const deadline = AbortSignal.timeout(120000);
   const signal = options.signal ? AbortSignal.any([deadline, options.signal]) : deadline;
   const stageDurations: Record<string, number> = {};
-  async function stage<T>(name: string, action: () => Promise<T>): Promise<T> {
+  const emitProgress = (event: AnalysisProgressEvent) => {
+    try { options.onProgress?.(event); } catch { /* Progress delivery must not change analysis results. */ }
+  };
+  async function stage<T>(name: AnalysisStage, action: () => Promise<T>): Promise<T> {
     if (signal.aborted) throw new ProviderError("Analysis cancelled or timed out.", 504, "ANALYSIS_TIMEOUT", true);
     const start = Date.now();
+    emitProgress({ type: "stage", stage: name, phase: "started" });
     try {
       const value = await action();
       if (signal.aborted) throw new ProviderError("Analysis cancelled or timed out.", 504, "ANALYSIS_TIMEOUT", true);
+      const durationMs = Date.now() - start;
+      emitProgress({ type: "stage", stage: name, phase: "completed", durationMs });
       return value;
+    } catch (error) {
+      emitProgress({ type: "stage", stage: name, phase: "failed", durationMs: Date.now() - start });
+      throw error;
     } finally { stageDurations[name] = Date.now() - start; }
   }
   const primaryPack={...pack,extractionSchema:pack.extractionSchema.filter(key=>key!=="companyResponse"&&key!=="companyPosition")};
@@ -58,7 +68,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const missing = pack.requiredFacts.filter(key => unknown(facts[key]));
   const queries = await stage("plan", () => planQueries(facts, country, pack, signal));
   const research = await stage("research", () => researchWithWarnings(queries, signal, pack.searchPlan.preferredDomains));
-  const rebuttalLab=await stage("rebuttal",()=>investigateObjections({facts,companyResponse,country,sources:research.sources,additionalDocuments,signal}));
+  const rebuttalLab=await stage("rebuttal",()=>investigateObjections({facts,companyResponse,country,sources:research.sources,additionalDocuments,signal,onAction:(action)=>emitProgress({type:"tool",...action})}));
   const sources=rebuttalLab.sources;
   const evaluation = await stage("evaluate", () => evaluateFindings(facts, sources, pack, signal, {companyResponse,additionalDocuments,primaryDocument:documentText,factEvidence}));
   const { findings, unverified, conflicts } = evaluation;

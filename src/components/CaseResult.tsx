@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import type { PipelineResult } from "@/lib/types";
+import type { AnalysisProgressEvent, PipelineResult } from "@/lib/types";
 import { COUNTRIES } from "@/lib/packs";
 import { exportLetter, safeUrl } from "./workflow";
+import { AnalysisProgress } from "./AnalysisProgress";
 
 function SourceLink({ url, children }: { url: string; children: React.ReactNode }) {
   const href = safeUrl(url);
@@ -16,7 +17,7 @@ function Notes({ title, items }: { title: string; items: string[] }) {
 }
 
 type AdditionalDocument = { id: string; label: string; text: string };
-export function CaseResult({ result, previousResult = null, additionalDocuments = [], onRemoveDocument, isFictionalSample = false, onReset, onRecheck, rechecking = false, recheckError, recheckNotice, onCancelRecheck }: {
+export function CaseResult({ result, previousResult = null, additionalDocuments = [], onRemoveDocument, isFictionalSample = false, onReset, onRecheck, rechecking = false, progressEvents = [], recheckError, recheckNotice, onCancelRecheck }: {
   result: PipelineResult;
   previousResult?: PipelineResult | null;
   additionalDocuments?: AdditionalDocument[];
@@ -25,6 +26,7 @@ export function CaseResult({ result, previousResult = null, additionalDocuments 
   onReset: () => void;
   onRecheck: (additionalDocuments: AdditionalDocument[]) => Promise<void>;
   rechecking?: boolean;
+  progressEvents?: AnalysisProgressEvent[];
   recheckError?: string | null;
   recheckNotice?: string | null;
   onCancelRecheck?: () => void;
@@ -113,6 +115,7 @@ export function CaseResult({ result, previousResult = null, additionalDocuments 
                 {evidenceError || recheckError ? <p className="feedback error-feedback" role="alert">{evidenceError || recheckError}</p> : null}
                 {recheckNotice ? <p className="feedback notice-feedback" role="status">{recheckNotice}</p> : null}
                 {rechecking ? <p className="recheck-status" role="status"><span className="activity-indicator" aria-hidden="true" />Rechecking the supplied record. Your previous analysis stays visible until the revision is ready.</p> : null}
+                {rechecking ? <AnalysisProgress events={progressEvents} recheck /> : null}
                 <div className="letter-actions"><button className="primary-button" type="submit" disabled={rechecking}>{rechecking ? "Recheck in progress" : "Recheck with this evidence"}<span aria-hidden="true">→</span></button>{rechecking ? <button className="secondary-button" type="button" onClick={onCancelRecheck}>Cancel recheck</button> : <button className="text-button" type="button" onClick={closeEvidenceForm}>Close evidence form</button>}</div>
               </form> : null}
             </section>

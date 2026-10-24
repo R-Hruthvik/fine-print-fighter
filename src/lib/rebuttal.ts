@@ -27,7 +27,7 @@ function validToolCall(value:unknown):value is Record<string,unknown> & {id:stri
 }
 
 /** A short, inspectable server-side function-calling loop. Only fixed enums and registered source IDs reach tools. */
-export async function investigateObjections(args:{ facts:ExtractedFacts; companyResponse:string; country:string; sources:Source[]; additionalDocuments:{id:string;label:string;text:string}[]; signal?:AbortSignal }):Promise<{objections:Objection[];actions:Action[];warnings:string[];sources:Source[]}> {
+export async function investigateObjections(args:{ facts:ExtractedFacts; companyResponse:string; country:string; sources:Source[]; additionalDocuments:{id:string;label:string;text:string}[]; signal?:AbortSignal; onAction?:(action:Action)=>void }):Promise<{objections:Objection[];actions:Action[];warnings:string[];sources:Source[]}> {
   const actions:Action[]=[];
   const warnings:string[]=[];
   const registry=[...args.sources];
@@ -65,6 +65,9 @@ export async function investigateObjections(args:{ facts:ExtractedFacts; company
       if(!parsed){messages.push({role:'tool',tool_call_id:raw.id,name,content:'Rejected: invalid tool arguments.'});continue;}
       if(name==='finish_investigation'){
         final=parsed;
+        const action:Action={tool:name,summary:'Checked the proposed objections against retained source passages.',sourceIds:[],durationMs:Math.max(0,Date.now()-started)};
+        actions.push(action);
+        try{args.onAction?.(action);}catch{/* Progress delivery must not affect the investigation. */}
         messages.push({role:'tool',tool_call_id:raw.id,name,content:'Investigation result recorded.'});
         continue;
       }
@@ -90,7 +93,9 @@ export async function investigateObjections(args:{ facts:ExtractedFacts; company
         output={recorded:!!detail,request};
       }
       const summary=name==='research_objection'?`Searched company policy: ${String(parsed.focus).replace(/_/g,' ')}.`:name==='inspect_source'?'Inspected a retained public source.':`Requested evidence: ${String(parsed.kind).replace(/_/g,' ')}.`;
-      actions.push({tool:name,summary,sourceIds,durationMs:Math.max(0,Date.now()-started)});
+      const action:Action={tool:name,summary,sourceIds,durationMs:Math.max(0,Date.now()-started)};
+      actions.push(action);
+      try{args.onAction?.(action);}catch{/* Progress delivery must not affect the investigation. */}
       messages.push({role:'tool',tool_call_id:raw.id,name,content:JSON.stringify(output).slice(0,8000)});
       if(actions.length>=4)break;
     }

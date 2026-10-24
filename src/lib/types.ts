@@ -2,6 +2,11 @@ export type Country = "IN" | "EU" | "US";
 
 export type CaseType = "flight-delay" | "subscription-cancel" | "surprise-bill";
 
+export type AnalysisStage = "extract" | "plan" | "research" | "rebuttal" | "evaluate" | "score" | "draft" | "escalate";
+export type AnalysisProgressEvent =
+  | { type: "stage"; stage: AnalysisStage; phase: "started" | "completed" | "failed"; durationMs?: number }
+  | { type: "tool"; tool: string; summary: string; sourceIds: string[]; durationMs: number };
+
 export interface ExtractedFacts {
   [key: string]: string | string[] | number | null | undefined;
   disputeSummary?: string;

@@ -93,6 +93,16 @@ label input, label select { margin-top: 7px; font-weight: 400; }
 .analysis-status strong { font-size: 12px; }
 .analysis-status p { font-size: 11px; color: var(--muted); margin: 3px 0 0; }
 .activity-indicator { margin-top: 5px; flex-shrink: 0; width: 16px; height: 16px; border: 2px solid #aac2b2; border-top-color: var(--accent); border-radius: 50%; animation: rotate 1s linear infinite; }
+.analysis-progress { margin-top: 15px; padding-top: 13px; border-top: 1px solid #cbd7cc; }
+.analysis-progress h3 { font-size: 11px; font-weight: 650; margin: 0 0 8px; }
+.analysis-progress ol { list-style: none; display: grid; gap: 6px; padding: 0; margin: 0; }
+.analysis-progress li { display: grid; grid-template-columns: 15px minmax(0, 1fr) auto; gap: 7px; align-items: baseline; font-size: 10px; line-height: 1.5; }
+.analysis-progress li > span:first-child { color: var(--accent); font-family: "Courier New", monospace; font-size: 12px; }
+.analysis-progress li small { color: var(--muted); font-size: 9px; white-space: nowrap; }
+.analysis-progress .progress-started { color: var(--muted); }
+.analysis-progress .progress-failed { color: var(--danger); }
+.analysis-progress .progress-tool { color: #344f44; }
+.analysis-progress .progress-note { margin-top: 9px; font-size: 9px; }
 @keyframes rotate { to { transform: rotate(360deg); } }
 .site-footer { max-width: 1216px; margin: 0 auto; border-top: 1px solid var(--line); padding: 24px 0; display: flex; justify-content: space-between; align-items: center; gap: 18px; font-size: 10px; color: var(--muted); }
 .site-footer > span:first-child { color: var(--ink); font-weight: 600; }
@@ -302,6 +312,7 @@ label input, label select { margin-top: 7px; font-weight: 400; }
 .rebuttal-evidence-form .letter-actions { margin-bottom: 0; }
 .rebuttal-evidence-form .feedback { margin: 15px 0 0; }
 .recheck-status { display: flex; gap: 12px; font-size: 11px; color: var(--muted); margin: 16px 0 0; }
+.rebuttal-evidence-form .analysis-progress { margin: 14px 0; }
 .revision-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
 .revision-columns h3 { font-size: 12px; margin: 0 0 10px; }
 .retained-exhibits { margin: 20px 0; padding: 16px 18px; background: #f5f6f0; }

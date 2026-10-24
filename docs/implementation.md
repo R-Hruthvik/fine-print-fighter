@@ -23,6 +23,7 @@ Rule packs have versions, required applicability facts, and review dates. Their 
 - Initial model attempt plus at most one retry/repair; no recursive repair.
 - Model call timeout 25 seconds, research call timeout 15 seconds, overall analysis deadline 120 seconds.
 - Production: Upstash-backed rolling budget of 12 requests per trusted IP per minute and a required global daily request cap. Per-IP identifiers are HMACed; production fails closed when shared limit configuration is unavailable. Development uses a process-local 12-per-minute budget. Each process allows at most three concurrent analyses.
+- `/api/extract` keeps its JSON response by default and can stream real stage transitions and completed registered tool actions as NDJSON to the first-party interface. The stream ends with the same pipeline result or a safe structured error; progress contains no case text or model-supplied claims.
 - Development stage endpoints disabled unless explicitly enabled; never enabled in production.
 - Safe public errors and case-free routine timing/count logs.
 - No database, saved cases, automatic sending, or provider key exposure in client code.

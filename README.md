@@ -27,7 +27,7 @@ Set `NEBIUS_API_KEY` in `.env.local`. `TAVILY_API_KEY` is optional: without it, 
 - India, European Union, and United States as initial research scopes, with unresolved applicability questions shown explicitly.
 - Total case text up to 30,000 characters across the primary document, company response, and added exhibits; company responses and individual exhibits are limited to 12,000 characters each.
 - Grounded extraction, minimized queries, deduplicated research, passage checks, conservative evidence ratings, and visible conflicts and unanswered questions.
-- Rebuttal Lab with a bounded Nemotron function-call loop, allowlisted research/source/evidence tools, inspectable tool activity, and application-verified policy quotations.
+- Rebuttal Lab with a bounded Nemotron function-call loop, allowlisted research/source/evidence tools, a live timeline of completed analysis stages and tool actions, and application-verified policy quotations.
 - Separate company-response intake and up to three added evidence documents with distinct IDs. Rechecks run from the original inputs; supplied evidence is described as added, not proof of eligibility.
 - Deterministic English complaint letters that quote matching research passages and ask the company to confirm applicability. Citation records come from the application source registry.
 - Editable letters with current-text download and print/PDF export, cancellation, and clear-case controls.

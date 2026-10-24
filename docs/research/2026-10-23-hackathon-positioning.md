@@ -2,6 +2,8 @@
 
 Researched: 23 October 2026. Sources are official organizer, vendor, and technical documentation pages. Competitor capabilities below are vendor claims, not independently verified effectiveness. Recommendations are product judgments.
 
+This document records the baseline and product decision from 23 October. The Rebuttal Lab, separate company-response and exhibit inputs, evidence revisions, and live progress timeline described here have since been implemented; current delivery gaps are tracked in the [hackathon readiness update](../research/2026-10-24-hackathon-readiness.md).
+
 ## Decision
 
 Make the flagship feature a **Rebuttal Lab**: inspect a company's actual denial, construct its strongest evidence-grounded explanation, investigate the weakest part of the consumer's case, and show exactly what changes when new evidence is added.

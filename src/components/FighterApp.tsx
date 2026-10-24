@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { Country, PipelineResult } from "@/lib/types";
+import type { AnalysisProgressEvent, Country, PipelineResult } from "@/lib/types";
 import { CASE_TYPES, COUNTRIES } from "@/lib/packs";
 import { MAX_DOCUMENT_CHARACTERS, MAX_FILE_BYTES, validateDocument, validateTextFile } from "./workflow";
 import { CaseResult } from "./CaseResult";
+import { AnalysisProgress } from "./AnalysisProgress";
 
 type FormState = {
   country: Country;
@@ -24,11 +25,58 @@ const DEFAULT_FORM: FormState = {
 
 const SAMPLE = "FICTIONAL SAMPLE — SUBSCRIPTION BILLING DISPUTE\n\nCompany: Example Streaming\nPlan: Monthly subscription, INR 499 per month\n\nI requested cancellation through the support chat on 5 October 2026. The reply said: ‘Your request has been received. Our billing team will review it.’\n\nMy payment statement shows another charge of INR 499 on 12 October 2026. I have not received confirmation that the subscription has ended. I would like confirmation of cancellation and a review of the latest charge.\n\nThis is a fictional example for trying the form. No company policy or legal eligibility has been established.";
 
+async function readPipelineResponse(response: Response, onProgress: (event: AnalysisProgressEvent) => void): Promise<unknown> {
+  if (!response.headers.get("content-type")?.includes("application/x-ndjson")) {
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = typeof data?.error === "string" ? data.error : "Analysis could not be completed. Please try again.";
+      throw new Error(`${message}${typeof data?.requestId === "string" ? ` Reference: ${data.requestId}` : ""}`);
+    }
+    return data;
+  }
+  if (!response.body) throw new Error("The live analysis stream ended unexpectedly. Your text is still here; please try again.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let result: unknown;
+  let receivedResult = false;
+  const consumeLine = (line: string) => {
+    if (!line.trim()) return;
+    let message: Record<string, unknown>;
+    try { message = JSON.parse(line) as Record<string, unknown>; }
+    catch { throw new Error("The analysis stream returned an invalid update. Your text is still here; please try again."); }
+    if (message.type === "progress" && message.event && typeof message.event === "object") onProgress(message.event as AnalysisProgressEvent);
+    else if (message.type === "result") { result = message.result; receivedResult = true; }
+    else if (message.type === "error") {
+      const payload = message.error as { error?: unknown; requestId?: unknown } | undefined;
+      const error = typeof payload?.error === "string" ? payload.error : "Analysis could not be completed. Please try again.";
+      throw new Error(`${error}${typeof payload?.requestId === "string" ? ` Reference: ${payload.requestId}` : ""}`);
+    }
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      pending += decoder.decode(value, { stream: !done });
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) consumeLine(line);
+      if (done) break;
+    }
+    if (pending.trim()) consumeLine(pending);
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally { reader.releaseLock(); }
+  if (!receivedResult) throw new Error("The live analysis stream ended before a result arrived. Your text is still here; please try again.");
+  return result;
+}
+
 export function FighterApp() {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [previousResult, setPreviousResult] = useState<PipelineResult | null>(null);
   const [isFictionalSample, setIsFictionalSample] = useState(false);
+  const [progressEvents, setProgressEvents] = useState<AnalysisProgressEvent[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -101,26 +149,24 @@ export function FighterApp() {
     }
     setError(null);
     setNotice(null);
+    setProgressEvents([]);
     setRunning(true);
     const controller = new AbortController();
     requestRef.current = controller;
     const timeout = setTimeout(() => controller.abort("timeout"), 125_000);
     try {
       const response = await fetch("/api/extract", {
-        method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
+        method: "POST", headers: { "Content-Type": "application/json", Accept: "application/x-ndjson, application/json" }, signal: controller.signal,
         body: JSON.stringify({ ...form, additionalDocuments: documents, packId: form.caseType, userName: form.userName || undefined, desiredOutcome: form.desiredOutcome || undefined }),
       });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        const message = typeof data?.error === "string" ? data.error : "Analysis could not be completed. Please try again.";
-        throw new Error(`${message}${typeof data?.requestId === "string" ? ` Reference: ${data.requestId}` : ""}`);
-      }
+      const data = await readPipelineResponse(response, (event) => setProgressEvents((previous) => [...previous, event])) as Partial<PipelineResult> | null;
       if (!data?.score || !Array.isArray(data.findings) || !Array.isArray(data.sources) || typeof data.letter !== "string") {
         throw new Error("The analysis response was incomplete. Your text is still here; please try again.");
       }
       if (!controller.signal.aborted) {
         if (result) setPreviousResult(result);
         setAdditionalDocuments(documents);
+        setProgressEvents([]);
         setResult(data as PipelineResult);
         setResultRevision((previous) => previous + 1);
       }
@@ -144,13 +190,14 @@ export function FighterApp() {
     setIsFictionalSample(false);
     setError(null);
     setNotice(null);
+    setProgressEvents([]);
     setFileName(null);
     setAdditionalDocuments([]);
     if (fileRef.current) fileRef.current.value = "";
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus"><CaseResult key={resultRevision} result={result} previousResult={previousResult} additionalDocuments={additionalDocuments} onRemoveDocument={(id) => { setAdditionalDocuments((previous) => previous.filter((document) => document.id !== id)); setNotice("Exhibit removed from the next recheck. This displayed analysis still reflects its original inputs."); }} isFictionalSample={isFictionalSample} onReset={reset} onRecheck={recheck} rechecking={running} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} /></div>;
+  if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus"><CaseResult key={resultRevision} result={result} previousResult={previousResult} additionalDocuments={additionalDocuments} onRemoveDocument={(id) => { setAdditionalDocuments((previous) => previous.filter((document) => document.id !== id)); setNotice("Exhibit removed from the next recheck. This displayed analysis still reflects its original inputs."); }} isFictionalSample={isFictionalSample} onReset={reset} onRecheck={recheck} rechecking={running} progressEvents={progressEvents} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} /></div>;
 
   return (
     <div className="intake-layout screen-only">
@@ -188,7 +235,7 @@ export function FighterApp() {
           </fieldset>
           {error ? <div className="feedback error-feedback" role="alert">{error}</div> : null}
           {notice ? <p className="feedback notice-feedback" role="status">{notice}</p> : null}
-          {running ? <div className="analysis-status" role="status" aria-live="polite"><span className="activity-indicator" aria-hidden="true" /><div><strong>Building your case analysis…</strong><p>Extracting facts, researching sources, and preparing your letter. This may take up to two minutes.</p></div></div> : null}
+          {running ? <div className="analysis-status" role="status" aria-live="polite"><span className="activity-indicator" aria-hidden="true" /><div><strong>Building your case analysis…</strong><p>Following the real research and evidence checks as they happen.</p><AnalysisProgress events={progressEvents} /></div></div> : null}
           <div className="submission-row"><button className="primary-button" type="submit" disabled={running}>{running ? "Analysis in progress" : "Analyze my case"}<span aria-hidden="true">→</span></button>{running ? <button className="secondary-button" type="button" onClick={() => requestRef.current?.abort()}>Cancel</button> : form.documentText || form.companyResponse || form.userName || form.desiredOutcome || form.replyDeadline !== DEFAULT_FORM.replyDeadline ? <button className="text-button clear-button" type="button" onClick={reset}>Clear all details</button> : null}</div>
           <p className="privacy-note">Your document is sent to the model provider (Nebius). Minimized research queries are sent to Tavily. Case content is not saved by this app; provider retention policies may apply. Remove sensitive details you don’t need to share.</p>
         </form>
