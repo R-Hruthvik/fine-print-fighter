@@ -16,7 +16,7 @@ export function EvidenceWalkthrough() {
       <div className="walkthrough-heading">
         <div>
           <p className="eyebrow">Try the evidence check</p>
-          <h2 id="walkthrough-heading">Remove the proof.</h2>
+          <h2 id="walkthrough-heading" tabIndex={-1}>Remove the proof.</h2>
         </div>
         <span>20 sec</span>
       </div>

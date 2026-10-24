@@ -209,7 +209,7 @@ export function FighterApp() {
         <p className="eyebrow">Make your case</p>
         <h1>Small print.<br />Clear next steps.</h1>
         <p className="intro-copy">A confusing bill. A cancellation that never happened. A flight that didn’t go to plan. Start with the document. We’ll help you find your footing.</p>
-        <a className="walkthrough-jump" href="#walkthrough-heading" onClick={(event) => { event.preventDefault(); window.history.replaceState(null, "", "#walkthrough-heading"); document.getElementById("walkthrough-heading")?.scrollIntoView({ block: "center", behavior: "instant" }); }}>Try the 20-second evidence check <span aria-hidden="true">↓</span></a>
+        <a className="walkthrough-jump" href="#walkthrough-heading" onClick={(event) => { event.preventDefault(); window.history.replaceState(null, "", "#walkthrough-heading"); const target = document.getElementById("walkthrough-heading"); target?.focus({ preventScroll: true }); target?.scrollIntoView({ block: "center", behavior: "instant" }); }}>Try the 20-second evidence check <span aria-hidden="true">↓</span></a>
         <ol className="process-list" id="how-it-works" aria-label="How it works">
           <li><span className="process-number">01</span><div><strong>Bring the facts</strong><p>Paste a notice, bill, or company email.</p></div></li>
           <li><span className="process-number">02</span><div><strong>See the evidence</strong><p>Review sources, gaps, and both sides of the dispute.</p></div></li>
