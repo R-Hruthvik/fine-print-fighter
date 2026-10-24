@@ -153,6 +153,11 @@ label input, label select { margin-top: 7px; font-weight: 400; }
 .results-title h1 { font-family: Georgia, serif; font-size: clamp(35px, 4vw, 52px); font-weight: 400; letter-spacing: -1.8px; line-height: 1.15; margin: 0 0 15px; }
 .results-title p:last-child { font-size: 13px; color: var(--muted); max-width: 65ch; margin-bottom: 0; }
 .results-title .secondary-button { flex-shrink: 0; }
+.results-nav { position: sticky; top: 0; z-index: 5; margin: 0 0 28px; background: color-mix(in oklch, var(--paper) 94%, transparent); border-block: 1px solid var(--line); backdrop-filter: blur(10px); }
+.results-nav-links { display: flex; gap: clamp(16px, 2.7cqi, 34px); align-items: center; min-height: 48px; overflow-x: auto; scrollbar-width: thin; }
+.results-nav a { flex: 0 0 auto; color: var(--muted); font-size: 11px; font-weight: 600; text-decoration: none; text-underline-offset: 5px; }
+.results-nav a:hover { color: var(--accent); text-decoration: underline; }
+.result-section, .rebuttal-lab, .evidence-heading { scroll-margin-top: 68px; }
 .results-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 40px; align-items: start; }
 .strength-panel { background: var(--accent-soft); padding: 28px; margin-bottom: 32px; }
 .strength-topline { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 17px; }
@@ -377,6 +382,11 @@ label input, label select { margin-top: 7px; font-weight: 400; }
 .retained-exhibits ul { padding: 0; margin: 0; list-style: none; }
 .retained-exhibits li { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 11px; }
 .retained-exhibits li span { overflow-wrap: anywhere; }
+@container (max-width: 940px) {
+  .results-layout { grid-template-columns: minmax(0, 1fr); }
+  .evidence-column { border-left: 0; border-top: 1px solid var(--line); padding: 25px 0 0; }
+  .sources-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 0 28px; }
+}
 @media (max-width: 540px) {
   .rebuttal-lab { padding: 20px 15px; }
   .rebuttal-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
