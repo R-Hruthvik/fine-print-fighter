@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import type { AnalysisProgressEvent, Country, PipelineResult } from "@/lib/types";
 import { CASE_TYPES, COUNTRIES } from "@/lib/packs";
+import { COMPANIES } from "@/lib/catalog";
 import { MAX_DOCUMENT_CHARACTERS, MAX_FILE_BYTES, validateDocument, validateTextFile } from "./workflow";
 import { CaseResult } from "./CaseResult";
 import { AnalysisProgress } from "./AnalysisProgress";
 import { EvidenceWalkthrough } from "./EvidenceWalkthrough";
 
 type FormState = {
+  companyName: string;
   country: Country;
   caseType: string;
   documentText: string;
@@ -20,7 +23,7 @@ type FormState = {
 };
 
 const DEFAULT_FORM: FormState = {
-  country: "IN", caseType: "subscription-cancel", documentText: "", companyResponse: "", userName: "",
+  companyName: "", country: "IN", caseType: "subscription-cancel", documentText: "", companyResponse: "", userName: "",
   desiredOutcome: "", language: "English", replyDeadline: "14 days",
 };
 
@@ -72,8 +75,10 @@ async function readPipelineResponse(response: Response, onProgress: (event: Anal
   return result;
 }
 
-export function FighterApp() {
-  const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+export function FighterApp({ initialPackId }: { initialPackId?: string }) {
+  const router = useRouter();
+  const selectedPack = CASE_TYPES.some((pack) => pack.id === initialPackId) ? initialPackId! : DEFAULT_FORM.caseType;
+  const [form, setForm] = useState<FormState>(() => ({ ...DEFAULT_FORM, caseType: selectedPack }));
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [previousResult, setPreviousResult] = useState<PipelineResult | null>(null);
   const [isFictionalSample, setIsFictionalSample] = useState(false);
@@ -85,9 +90,15 @@ export function FighterApp() {
   const [exhibitRemovalPending, setExhibitRemovalPending] = useState(false);
   const [resultRevision, setResultRevision] = useState(0);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [saveRequested, setSaveRequested] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [stage, setStage] = useState<1 | 2 | 3>(1);
   const fileRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<AbortController | null>(null);
   const resultHeading = useRef<HTMLDivElement>(null);
+  const matchedCompany = COMPANIES.find((company) => company.name.toLowerCase() === form.companyName.trim().toLowerCase());
+  const hasCompanyCoverage = Boolean(matchedCompany && matchedCompany.packIds.some((packId) => packId === form.caseType) && matchedCompany.jurisdictions.includes(form.country));
 
   useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => {
@@ -96,6 +107,24 @@ export function FighterApp() {
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((previous) => ({ ...previous, [key]: value }));
+  }
+
+  function continueToDocuments() {
+    if (!CASE_TYPES.some((pack) => pack.id === form.caseType) || !COUNTRIES.some((country) => country.code === form.country)) {
+      setError("Choose a supported jurisdiction and complaint type.");
+      return;
+    }
+    setError(null);
+    setStage(2);
+  }
+
+  function reviewCase() {
+    const validation = validateDocument(form.documentText);
+    if (validation) { setError(validation); return; }
+    if (!form.companyResponse.trim()) { setError("Add the company’s actual reply or explanation before reviewing."); return; }
+    if (form.companyResponse.length > 12_000) { setError("The company response exceeds 12,000 characters. Shorten it before reviewing."); return; }
+    setError(null);
+    setStage(3);
   }
 
   async function upload(file: File) {
@@ -187,7 +216,7 @@ export function FighterApp() {
 
   function reset() {
     requestRef.current?.abort();
-    setForm({ ...DEFAULT_FORM });
+    setForm({ ...DEFAULT_FORM, caseType: selectedPack });
     setResult(null);
     setPreviousResult(null);
     setIsFictionalSample(false);
@@ -197,11 +226,46 @@ export function FighterApp() {
     setFileName(null);
     setAdditionalDocuments([]);
     setExhibitRemovalPending(false);
+    setSaveRequested(false);
+    setSaveMessage(null);
+    setStage(1);
     if (fileRef.current) fileRef.current.value = "";
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus"><CaseResult key={resultRevision} result={result} previousResult={previousResult} additionalDocuments={additionalDocuments} exhibitRemovalPending={exhibitRemovalPending} onRemoveDocument={(id) => { setAdditionalDocuments((previous) => previous.filter((document) => document.id !== id)); setExhibitRemovalPending(true); setNotice("The displayed analysis still includes this exhibit. Recheck to analyze the remaining evidence."); }} isFictionalSample={isFictionalSample} onReset={reset} onRecheck={recheck} rechecking={running} progressEvents={progressEvents} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} /></div>;
+  async function saveCase() {
+    if (!result || !saveRequested) return;
+    if (exhibitRemovalPending) {
+      setSaveMessage("Recheck the remaining evidence before saving so the documents match the analysis.");
+      return;
+    }
+    setSaving(true); setSaveMessage(null);
+    try {
+      const documents = [
+        { label: "Primary document", text: form.documentText },
+        { label: "Company response", text: form.companyResponse },
+        ...additionalDocuments.map((item) => ({ label: item.label, text: item.text })),
+      ];
+      const response = await fetch("/api/cases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyName: form.companyName || "Unlisted company", packId: form.caseType, jurisdiction: form.country, documents, analysis: result, letter: result.letter }) });
+      const payload = await response.json().catch(() => ({})) as { error?: string; case?: { id: string } };
+      if (response.status === 401) { setSaveMessage("Sign in to save this case. Your guest analysis is still available here."); return; }
+      if (!response.ok) throw new Error(payload.error || "This case could not be saved.");
+      setSaveMessage("Case saved privately to your account.");
+      if (payload.case?.id) window.setTimeout(() => router.push(`/cases/${payload.case?.id}`), 500);
+    } catch (caught) { setSaveMessage(caught instanceof Error ? caught.message : "This case could not be saved."); }
+    finally { setSaving(false); }
+  }
+
+  if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus">
+      <section className="save-case-panel" aria-label="Save case">
+      <label className="save-case-choice"><input type="checkbox" checked={saveRequested} onChange={(event) => { setSaveRequested(event.target.checked); setSaveMessage(null); }} /> Save the complete case to my private account</label>
+      <p>Optional. Includes the documents, analysis, and draft letter. Nothing is saved unless you check this box and choose Save case.</p>
+      <button className="secondary-button" type="button" disabled={!saveRequested || saving || exhibitRemovalPending} onClick={() => void saveCase()}>{saving ? "Saving…" : "Save case"}<span aria-hidden="true">→</span></button>
+      {exhibitRemovalPending ? <p className="save-case-message">Recheck the remaining evidence before saving so the saved documents and analysis stay aligned.</p> : null}
+      {saveMessage ? <p className="save-case-message" role="status">{saveMessage}{saveMessage.startsWith("Sign in") ? <> <a href="/sign-in">Sign in</a> or <a href="/sign-up">create an account</a>.</> : null}</p> : null}
+    </section>
+    <CaseResult key={resultRevision} result={result} previousResult={previousResult} additionalDocuments={additionalDocuments} exhibitRemovalPending={exhibitRemovalPending} onRemoveDocument={(id) => { setAdditionalDocuments((previous) => previous.filter((document) => document.id !== id)); setExhibitRemovalPending(true); setNotice("The displayed analysis still includes this exhibit. Recheck to analyze the remaining evidence."); }} isFictionalSample={isFictionalSample} onReset={reset} onRecheck={recheck} rechecking={running} progressEvents={progressEvents} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} />
+  </div>;
 
   return (
     <div className="intake-layout screen-only">
@@ -224,11 +288,19 @@ export function FighterApp() {
         <form onSubmit={analyze} aria-busy={running}>
           <fieldset disabled={running} className="form-fields">
             <legend className="sr-only">Case details</legend>
-            <div className="form-grid">
+            <div className="intake-stepper" aria-label={`Step ${stage} of 3`}><span className={stage >= 1 ? "active" : ""}>01 <b>Case details</b></span><span className={stage >= 2 ? "active" : ""}>02 <b>Documents</b></span><span className={stage >= 3 ? "active" : ""}>03 <b>Review</b></span></div>
+            {stage === 1 ? <>
+            <p className="eyebrow intake-stage-label">Step 1 · Choose your complaint</p>
+            <div className="form-grid intake-choice-grid">
+              <label htmlFor="company-name">Company name <span className="required-note">Optional</span><input id="company-name" list="company-options" value={form.companyName} maxLength={200} onChange={(event) => update("companyName", event.target.value)} placeholder="Type any company name" /><datalist id="company-options">{COMPANIES.map((company) => <option key={company.slug} value={company.name} />)}</datalist><span className="field-hint">{hasCompanyCoverage ? `Reviewed sources available for this complaint and jurisdiction (checked ${matchedCompany?.reviewedOn}); source coverage does not establish eligibility.` : matchedCompany ? `${matchedCompany.name} has a directory entry, but not for this complaint and jurisdiction. Company-specific research may be limited.` : "Unlisted companies are welcome; company-specific research may be limited."}</span></label>
               <label htmlFor="country">Research jurisdiction<select id="country" value={form.country} onChange={(event) => update("country", event.target.value as Country)}>{COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.label}</option>)}</select></label>
-              <label htmlFor="case-type">What’s the issue?<select id="case-type" value={form.caseType} onChange={(event) => update("caseType", event.target.value)}>{CASE_TYPES.map((pack) => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label>
+              <label htmlFor="case-type" className="full-width">What’s the issue?<select id="case-type" value={form.caseType} onChange={(event) => update("caseType", event.target.value)}>{CASE_TYPES.map((pack) => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label>
             </div>
             <p className="field-hint jurisdiction-hint">The applicable rules may also depend on your route, state, sector, or contract.</p>
+            <div className="submission-row"><button className="primary-button" type="button" onClick={continueToDocuments}>Continue to documents <span aria-hidden="true">→</span></button></div>
+            </> : null}
+            {stage === 2 ? <>
+            <p className="eyebrow intake-stage-label">Step 2 · Add the record</p>
             <div className="document-label"><label htmlFor="document-text">Document text <span className="required-note">Required</span></label><button className="text-button" type="button" onClick={() => fileRef.current?.click()}>Upload .txt / .md <span aria-hidden="true">↗</span></button></div>
             <input ref={fileRef} type="file" accept=".txt,.md,text/plain,text/markdown" className="sr-only" tabIndex={-1} aria-label="Upload a text document" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
             <textarea id="document-text" className="document-input" value={form.documentText} onChange={(event) => { update("documentText", event.target.value); setFileName(null); }} aria-describedby="document-hint document-count" placeholder="Paste the bill, notice, or email here. Include dates, charges, and the company’s explanation where available." required />
@@ -238,12 +310,19 @@ export function FighterApp() {
             <div className="company-response-meta"><p className="field-hint" id="company-response-hint">Use the exact reply where possible. An explanation is not proof that the company is right.</p><span id="company-response-count" className={`character-counter ${form.companyResponse.length > 12_000 ? "over-limit" : ""}`}>{form.companyResponse.length.toLocaleString("en-IN")} / 12,000 characters</span></div>
             <div className="sample-row"><span>Just looking around?</span><button className="text-button" type="button" onClick={() => { setForm({ ...DEFAULT_FORM, caseType: "subscription-cancel", documentText: SAMPLE, companyResponse: "Your subscription remained active through the next billing date. Our records show that cancellation was not completed before the renewal. We cannot refund the charge." }); setIsFictionalSample(true); setFileName(null); setError(null); setNotice("Fictional sample loaded. The company reply is invented; research results are retrieved live."); }}>Try a fictional example <span aria-hidden="true">→</span></button></div>
             <details className="preferences"><summary>Personalize your letter <span>Optional</span></summary><div className="form-grid preference-fields"><label htmlFor="user-name">Your name<input id="user-name" autoComplete="name" value={form.userName} maxLength={200} onChange={(event) => update("userName", event.target.value)} placeholder="Or leave a placeholder" /></label><label htmlFor="letter-language">Letter language<input id="letter-language" value="English" readOnly aria-describedby="language-hint" /><span className="field-hint" id="language-hint">English is supported in this version.</span></label><label htmlFor="desired-outcome" className="full-width">What would resolve this?<input id="desired-outcome" value={form.desiredOutcome} maxLength={2000} onChange={(event) => update("desiredOutcome", event.target.value)} placeholder="For example, cancel my plan and review the latest charge" /></label><label htmlFor="reply-deadline" className="full-width">Requested reply period<input id="reply-deadline" value={form.replyDeadline} maxLength={100} onChange={(event) => update("replyDeadline", event.target.value)} aria-describedby="reply-hint" /><span className="field-hint" id="reply-hint">A requested response time, not an established legal deadline.</span></label></div></details>
+            <div className="submission-row"><button className="secondary-button" type="button" onClick={() => { setError(null); setStage(1); }}>Back</button><button className="primary-button" type="button" onClick={reviewCase}>Review details <span aria-hidden="true">→</span></button></div>
+            </> : null}
+            {stage === 3 ? <>
+              <p className="eyebrow intake-stage-label">Step 3 · Check before analysis</p>
+              <div className="intake-review"><dl><div><dt>Company</dt><dd>{form.companyName || "Not listed"}</dd></div><div><dt>Research jurisdiction</dt><dd>{COUNTRIES.find((country) => country.code === form.country)?.label}</dd></div><div><dt>Complaint type</dt><dd>{CASE_TYPES.find((pack) => pack.id === form.caseType)?.label}</dd></div><div><dt>Primary document</dt><dd>{fileName || `${form.documentText.length.toLocaleString("en-IN")} characters pasted`}</dd></div><div><dt>Company response</dt><dd>{form.companyResponse.length.toLocaleString("en-IN")} characters</dd></div><div><dt>Additional exhibits</dt><dd>{additionalDocuments.length}</dd></div></dl></div>
+              <p className="privacy-note">Your text is sent to the configured analysis and research providers. Guest cases are not saved. After analysis, you can choose whether to save the full case to a private account.</p>
+              <div className="submission-row"><button className="secondary-button" type="button" onClick={() => { setError(null); setStage(2); }}>Back to documents</button><button className="primary-button" type="submit" disabled={running}>{running ? "Analysis in progress" : "Analyze my case"}<span aria-hidden="true">→</span></button></div>
+            </> : null}
           </fieldset>
           {error ? <div className="feedback error-feedback" role="alert">{error}</div> : null}
           {notice ? <p className="feedback notice-feedback" role="status">{notice}</p> : null}
           {running ? <div className="analysis-status" role="status" aria-live="polite"><span className="activity-indicator" aria-hidden="true" /><div><strong>Building your case analysis…</strong><p>Following the real research and evidence checks as they happen.</p><AnalysisProgress events={progressEvents} /></div></div> : null}
-          <div className="submission-row"><button className="primary-button" type="submit" disabled={running}>{running ? "Analysis in progress" : "Analyze my case"}<span aria-hidden="true">→</span></button>{running ? <button className="secondary-button" type="button" onClick={() => requestRef.current?.abort()}>Cancel</button> : form.documentText || form.companyResponse || form.userName || form.desiredOutcome || form.replyDeadline !== DEFAULT_FORM.replyDeadline ? <button className="text-button clear-button" type="button" onClick={reset}>Clear all details</button> : null}</div>
-          <p className="privacy-note">Your document is sent to the model provider (Nebius). Minimized research queries are sent to Tavily. Case content is not saved by this app; provider retention policies may apply. Remove sensitive details you don’t need to share.</p>
+          {running ? <div className="submission-row"><button className="secondary-button" type="button" onClick={() => requestRef.current?.abort()}>Cancel analysis</button></div> : stage === 1 ? <button className="text-button clear-button" type="button" onClick={reset}>Clear all details</button> : null}
         </form>
       </section>
     </div>

@@ -11,7 +11,7 @@ test("primary endpoint returns safe typed errors and no-store for invalid JSON a
   assert.equal(malformed.headers.get("cache-control"), "no-store");
   assert.equal((await malformed.json()).code, "INVALID_JSON");
   delete process.env.NEBIUS_API_KEY;
-  const unconfigured = await POST(post(JSON.stringify({ documentText: "A bill", packId: "surprise-bill", country: "US" })));
+  const unconfigured = await POST(post(JSON.stringify({ documentText: "A bill", companyResponse: "The company declined the request.", packId: "surprise-bill", country: "US" })));
   assert.equal(unconfigured.status, 503);
   const error = await unconfigured.json();
   assert.equal(error.code, "CONFIGURATION_MISSING");

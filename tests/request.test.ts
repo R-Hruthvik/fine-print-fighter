@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseCaseRequest, readJSON, errorResponse, allowStageRoute, takeBudget } from "../src/lib/request";
 
-const valid = { documentText: "A charge appeared after cancellation.", packId: "subscription-cancel", country: "IN" };
+const valid = { documentText: "A charge appeared after cancellation.", companyResponse: "The company declined the request.", packId: "subscription-cancel", country: "IN" };
 
 test("case requests reject whitespace, unknown packs/countries, non-string options and excess input", () => {
   for (const mutation of [

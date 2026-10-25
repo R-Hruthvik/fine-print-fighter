@@ -47,6 +47,7 @@ export function parseCaseRequest(input: unknown) {
     additionalDocuments: parsedDocuments,
     packId: b.packId,
     country: b.country as Country,
+    companyName: option("companyName", 200),
     userName: option("userName", 200),
     desiredOutcome: option("desiredOutcome", 2000),
     language: option("language", 80, "English"),

@@ -56,6 +56,7 @@ test("remedy preserves a charge without claiming a refund entitlement or guessin
   process.env.TAVILY_API_KEY = "test";
   const outputs = [
     { company: "Example", amount: "₹1,200", disputeSummary: "Disputed fee", companyPosition: [] },
+    { tool_calls: [{ id: "finish-1", type: "function", function: { name: "finish_investigation", arguments: JSON.stringify({ objections: [] }) } }] },
     { findings: [], unverified: ["Fee eligibility unknown"], unanswered: ["What sector?"], conflicts: [] },
     { letter: "Please review the disputed fee. [Customer name]", citations: [] },
   ];
@@ -63,7 +64,8 @@ test("remedy preserves a charge without claiming a refund entitlement or guessin
     if (String(input).includes("tavily")) return Response.json({ results: [{ url: "https://example.com/policy", title: "Policy", content: "Please contact the company about disputed charges." }] });
     const output = outputs.shift();
     if (!output) throw new Error("Unexpected model call");
-    return Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] });
+    const message = "tool_calls" in output ? output : { content: JSON.stringify(output) };
+    return Response.json({ choices: [{ message }] });
   };
   const result = await runPipeline({ documentText: "Example fee ₹1,200", pack: getPack("surprise-bill")!, country: "IN", requestId: "fixture-run" });
   assert.equal(result.compensation.amount, undefined);

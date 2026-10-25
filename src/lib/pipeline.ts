@@ -7,6 +7,7 @@ import { investigateObjections } from "./rebuttal";
 export interface PipelineOptions {
   documentText: string;
   companyResponse?: string;
+  companyName?: string;
   additionalDocuments?: {id:string;label:string;text:string}[];
   pack: RulePack;
   country: Country;
@@ -36,7 +37,7 @@ export function describeRemedy(facts: ExtractedFacts): CompensationResult {
 }
 
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
-  const { documentText, pack, country, userName = "not supplied", desiredOutcome = "a review and fair resolution of the disputed charge", language = "English", replyDeadline = "14 days", companyResponse = "", additionalDocuments = [] } = options;
+  const { documentText, pack, country, companyName, userName = "not supplied", desiredOutcome = "a review and fair resolution of the disputed charge", language = "English", replyDeadline = "14 days", companyResponse = "", additionalDocuments = [] } = options;
   requireProviderConfiguration();
   const started = Date.now();
   const startedAt = new Date(started).toISOString();
@@ -66,7 +67,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const extracted = await stage("extract", () => extractFacts(documentText, primaryPack, signal, true));
   const {facts,evidence:factEvidence}=extracted;
   const missing = pack.requiredFacts.filter(key => unknown(facts[key]));
-  const queries = await stage("plan", () => planQueries(facts, country, pack, signal));
+  const queries = await stage("plan", () => planQueries(facts, country, pack, signal, companyName));
   const research = await stage("research", () => researchWithWarnings(queries, signal, pack.searchPlan.preferredDomains));
   const rebuttalLab=await stage("rebuttal",()=>investigateObjections({facts,companyResponse,country,sources:research.sources,additionalDocuments,signal,onAction:(action)=>emitProgress({type:"tool",...action})}));
   const sources=rebuttalLab.sources;

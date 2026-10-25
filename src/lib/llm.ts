@@ -28,7 +28,12 @@ export async function extractFacts(documentText:string,pack:{id:CaseType;name:st
       const [integer,decimal]=String(Math.abs(value)).split('.');
       const grouped=integer.replace(/\B(?=(\d{3})+(?!\d))/g,',?');
       const pattern=`(?<![\\d.,-])[-−]?${grouped}${decimal?`\\.${decimal}`:''}(?!\\d|[.,]\\d)`;
-      return documentText.match(new RegExp(pattern))?.[0];
+      const match=documentText.match(new RegExp(pattern));
+      if (!match || match.index === undefined) return undefined;
+      const before=documentText.slice(0,match.index);
+      const signed=/[-−]\s*$/.test(before) || /^[-−]/.test(match[0]);
+      if ((value < 0) !== signed) return undefined;
+      return match[0];
     }
     return undefined;
   };
@@ -52,10 +57,10 @@ export async function extractFacts(documentText:string,pack:{id:CaseType;name:st
 }
 
 /** The search boundary receives a small allowlist, never the document or user preferences. */
-export async function planQueries(facts:ExtractedFacts,country:Country,pack:{searchPlan:{queries:string[]}},signal?:AbortSignal):Promise<{query:string;targets:string}[]> {
+export async function planQueries(facts:ExtractedFacts,country:Country,pack:{searchPlan:{queries:string[]}},signal?:AbortSignal,companyName?:string):Promise<{query:string;targets:string}[]> {
   signal?.throwIfAborted();
   const entity=(value:unknown,fallback:string):string => safeSearchEntity(value,fallback);
-  const company=entity(facts.company ?? facts.airline,'company');
+  const company=entity(companyName || facts.company || facts.airline,'company');
   const values:Record<string,string>={country,company,airline:company,sector:entity(facts.sector,'billing'),flightNumber:'',date:''};
   return pack.searchPlan.queries.slice(0,6).map((template,index) => ({
     query:template.replace(/\{([^}]+)\}/g,(_,key:string) => values[key] ?? '').replace(/\s+/g,' ').trim().slice(0,300),
