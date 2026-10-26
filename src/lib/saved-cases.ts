@@ -1,5 +1,7 @@
 import type { Country, PipelineResult } from "./types";
 import { getPack } from "./packs";
+import { isValidScopeAnswers } from "./scope-answers";
+import { safeSourceURL } from "./evidence";
 
 export type SavedCaseSummary = {
   id: string;
@@ -33,6 +35,10 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
 /** Validate the analysis shape returned by the pipeline and the storage limits used by saves. */
 export function isValidCaseAnalysis(analysis: unknown, letter: unknown): analysis is PipelineResult {
   if (!isRecord(analysis) || typeof letter !== "string" || letter.length > 30_000) return false;
@@ -47,18 +53,43 @@ export function isValidCaseAnalysis(analysis: unknown, letter: unknown): analysi
   const rebuttalLab = analysis.rebuttalLab;
   if (!isRecord(analysis.facts) || !Object.values(analysis.facts).every((fact) => fact === null || typeof fact === "string"
     || (typeof fact === "number" && Number.isFinite(fact)) || isStringArray(fact))) return false;
+  if (analysis.scopeAnswers !== undefined) {
+    if (!isRecord(analysis.scopeAnswers) || typeof analysis.scopeAnswers.packId !== "string" || !getPack(analysis.scopeAnswers.packId)
+      || !isValidScopeAnswers(analysis.scopeAnswers, analysis.scopeAnswers.packId as Parameters<typeof isValidScopeAnswers>[1])) return false;
+  }
   if (!isRecord(analysis.factEvidence) || !Object.values(analysis.factEvidence).every((evidence) => isRecord(evidence)
     && typeof evidence.documentId === "string" && typeof evidence.label === "string" && isStringArray(evidence.excerpts))) return false;
   if (!isStringArray(analysis.queries)) return false;
   if (analysis.country !== "IN" && analysis.country !== "EU" && analysis.country !== "US") return false;
   if (typeof analysis.letter !== "string" || analysis.letter.length > 30_000) return false;
   if (!Array.isArray(analysis.sources) || !analysis.sources.every((source) => isRecord(source)
-    && typeof source.id === "string" && typeof source.url === "string" && typeof source.title === "string"
-    && typeof source.snippet === "string" && typeof source.retrievedAt === "string")) return false;
+    && typeof source.id === "string" && typeof source.url === "string" && safeSourceURL(source.url) && typeof source.title === "string"
+    && typeof source.snippet === "string" && typeof source.retrievedAt === "string"
+    && (source.retrieval === undefined || ["search_snippet", "provider_extract", "reviewed_catalog"].includes(String(source.retrieval)))
+    && (source.authority === undefined || ["regulator", "official_company", "official_explainer", "secondary", "unreviewed"].includes(String(source.authority)))
+    && (source.jurisdiction === undefined || ["IN", "EU", "US", "unknown"].includes(String(source.jurisdiction)))
+    && (source.freshness === undefined || ["unknown", "current_checked", "changed", "stale", "unavailable"].includes(String(source.freshness)))
+    && (source.contentHash === undefined || typeof source.contentHash === "string" && /^[a-f0-9]{64}$/i.test(source.contentHash))
+    && isOptionalString(source.publisher) && isOptionalString(source.extractedAt)
+    && isOptionalString(source.requestedUrl) && (source.requestedUrl === undefined || typeof source.requestedUrl === "string" && safeSourceURL(source.requestedUrl))
+    && isOptionalString(source.finalUrl) && (source.finalUrl === undefined || typeof source.finalUrl === "string" && safeSourceURL(source.finalUrl))
+    && (source.extractionStatus === undefined || ["extracted", "failed", "skipped_no_key", "not_selected"].includes(String(source.extractionStatus)))
+    && (source.extractionFailure === undefined || ["rate_limited", "timed_out", "unavailable", "invalid_response"].includes(String(source.extractionFailure)))
+    && (source.queries === undefined || isStringArray(source.queries)))) return false;
+  const sourceById = new Map((analysis.sources as Record<string, unknown>[]).map((source) => [String(source.id), source]));
   if (!Array.isArray(analysis.findings) || !analysis.findings.every((finding) => isRecord(finding)
     && typeof finding.id === "string" && typeof finding.statement === "string"
     && ["favors-customer", "favors-company", "unclear"].includes(String(finding.stance))
-    && isStringArray(finding.sourceIds) && typeof finding.supportingPassage === "string" && typeof finding.verified === "boolean")) return false;
+    && isStringArray(finding.sourceIds) && typeof finding.supportingPassage === "string" && typeof finding.verified === "boolean"
+    && (finding.evidenceStatus === undefined || ["source_quote_matched", "source_quote_unmatched"].includes(String(finding.evidenceStatus)))
+    && (finding.claimRelation === undefined || finding.claimRelation === "unreviewed")
+    && (finding.verificationReason === undefined || typeof finding.verificationReason === "string")
+    && (finding.sourceMatches === undefined || Array.isArray(finding.sourceMatches) && finding.sourceMatches.every((match) => isRecord(match)
+      && typeof match.sourceId === "string" && sourceById.has(match.sourceId)
+      && Number.isInteger(match.start) && Number(match.start) >= 0
+      && Number.isInteger(match.end) && Number(match.end) > Number(match.start)
+      && match.offsetBasis === "retained_source_text"
+      && Number(match.end) <= String(sourceById.get(match.sourceId)?.snippet ?? "").length)))) return false;
   if (!isRecord(score) || !["strong", "medium", "weak"].includes(String(score.rating))
     || !["sufficient", "limited", "none"].includes(String(score.coverage))
     || !isStringArray(score.reasons) || !isStringArray(score.evidenceToGather)) return false;
@@ -71,7 +102,7 @@ export function isValidCaseAnalysis(analysis: unknown, letter: unknown): analysi
     || (compensation.noAmountFound !== undefined && typeof compensation.noAmountFound !== "boolean")
     || (compensation.disputedAmount !== undefined && (typeof compensation.disputedAmount !== "number" || !Number.isFinite(compensation.disputedAmount)))) return false;
   if (!Array.isArray(analysis.letterCitations) || !analysis.letterCitations.every((citation) => isRecord(citation)
-    && typeof citation.id === "number" && typeof citation.title === "string" && typeof citation.url === "string")) return false;
+    && typeof citation.id === "number" && typeof citation.title === "string" && typeof citation.url === "string" && safeSourceURL(citation.url))) return false;
   if (!Array.isArray(analysis.escalation) || !analysis.escalation.every((step) => isRecord(step)
     && typeof step.step === "number" && typeof step.body === "string" && typeof step.action === "string")) return false;
   if (!isStringArray(analysis.unanswered) || !isStringArray(analysis.unverified)
@@ -105,5 +136,6 @@ export function validateSaveCase(value: unknown): value is SaveCaseInput {
   const documentCharacters = input.documents.reduce((total, doc) => total + doc.text.length, 0);
   if (documentCharacters > 30_000 || typeof input.letter !== "string" || input.letter.length > 30_000) return false;
   if (!isValidCaseAnalysis(input.analysis, input.letter) || input.analysis.country !== input.jurisdiction) return false;
+  if (input.analysis.scopeAnswers && input.analysis.scopeAnswers.packId !== input.packId) return false;
   return true;
 }

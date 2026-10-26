@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isValidCaseAnalysis, validateSaveCase } from "../src/lib/saved-cases";
 import type { PipelineResult } from "../src/lib/types";
+import { normalizeScopeAnswers } from "../src/lib/scope-answers";
 
 const analysis: PipelineResult = {
   facts: {}, factEvidence: {}, queries: [], sources: [], findings: [],
@@ -34,4 +35,20 @@ test("saved-case validation accepts only supported packs, jurisdictions, and non
   assert.equal(validateSaveCase(saveInput({ jurisdiction: "UK" })), false);
   assert.equal(validateSaveCase(saveInput({ jurisdiction: "EU" })), false);
   assert.equal(validateSaveCase(saveInput({ documents: [{ label: "Primary document", text: " " }, { label: "Company response", text: "Reply" }] })), false);
+});
+
+test("saved-case validation keeps explicit scope-answer provenance while accepting older analyses", () => {
+  const withScope = { ...analysis, scopeAnswers: normalizeScopeAnswers("flight-delay", { operatingCarrier: "Air India" }) };
+  assert.equal(isValidCaseAnalysis(withScope, withScope.letter), true);
+  assert.equal(isValidCaseAnalysis(analysis, analysis.letter), true);
+  const invalid = { ...withScope, scopeAnswers: { ...withScope.scopeAnswers, answers: withScope.scopeAnswers.answers.map((answer, index) => index === 0 ? { ...answer, provenance: "document" } : answer) } };
+  assert.equal(isValidCaseAnalysis(invalid, invalid.letter), false);
+});
+
+test("saved-case validation keeps explicit scope-answer provenance while accepting older analyses", () => {
+  const withScope = { ...analysis, scopeAnswers: normalizeScopeAnswers("flight-delay", { operatingCarrier: "Air India" }) };
+  assert.equal(isValidCaseAnalysis(withScope, withScope.letter), true);
+  assert.equal(isValidCaseAnalysis(analysis, analysis.letter), true);
+  const invalid = { ...withScope, scopeAnswers: { ...withScope.scopeAnswers, answers: withScope.scopeAnswers.answers.map((answer, index) => index === 0 ? { ...answer, provenance: "document" } : answer) } };
+  assert.equal(isValidCaseAnalysis(invalid, invalid.letter), false);
 });

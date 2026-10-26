@@ -3,17 +3,21 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { AnalysisProgressEvent, Country, PipelineResult } from "@/lib/types";
+import type { SaveCaseInput } from "@/lib/saved-cases";
+import { clearPendingCaseSave, storePendingCaseSave } from "@/lib/pending-case-save";
 import { CASE_TYPES, COUNTRIES } from "@/lib/packs";
 import { COMPANIES } from "@/lib/catalog";
 import { MAX_DOCUMENT_CHARACTERS, MAX_FILE_BYTES, validateDocument, validateTextFile } from "./workflow";
 import { CaseResult } from "./CaseResult";
 import { AnalysisProgress } from "./AnalysisProgress";
 import { EvidenceWalkthrough } from "./EvidenceWalkthrough";
+import { SCOPE_QUESTIONS } from "@/lib/scope-answers";
 
 type FormState = {
   companyName: string;
   country: Country;
   caseType: string;
+  scopeAnswers: Record<string, string>;
   documentText: string;
   companyResponse: string;
   userName: string;
@@ -23,7 +27,7 @@ type FormState = {
 };
 
 const DEFAULT_FORM: FormState = {
-  companyName: "", country: "IN", caseType: "subscription-cancel", documentText: "", companyResponse: "", userName: "",
+  companyName: "", country: "IN", caseType: "subscription-cancel", scopeAnswers: {}, documentText: "", companyResponse: "", userName: "",
   desiredOutcome: "", language: "English", replyDeadline: "14 days",
 };
 
@@ -80,6 +84,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
   const selectedPack = CASE_TYPES.some((pack) => pack.id === initialPackId) ? initialPackId! : DEFAULT_FORM.caseType;
   const [form, setForm] = useState<FormState>(() => ({ ...DEFAULT_FORM, caseType: selectedPack }));
   const [result, setResult] = useState<PipelineResult | null>(null);
+  const [editedLetter, setEditedLetter] = useState("");
   const [previousResult, setPreviousResult] = useState<PipelineResult | null>(null);
   const [isFictionalSample, setIsFictionalSample] = useState(false);
   const [progressEvents, setProgressEvents] = useState<AnalysisProgressEvent[]>([]);
@@ -93,6 +98,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
   const [saveRequested, setSaveRequested] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [pendingSaveReady, setPendingSaveReady] = useState(false);
   const [stage, setStage] = useState<1 | 2 | 3>(1);
   const fileRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<AbortController | null>(null);
@@ -188,7 +194,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     try {
       const response = await fetch("/api/extract", {
         method: "POST", headers: { "Content-Type": "application/json", Accept: "application/x-ndjson, application/json" }, signal: controller.signal,
-        body: JSON.stringify({ ...form, additionalDocuments: documents, packId: form.caseType, userName: form.userName || undefined, desiredOutcome: form.desiredOutcome || undefined }),
+        body: JSON.stringify({ ...form, additionalDocuments: documents, packId: form.caseType, scopeAnswers: form.scopeAnswers, userName: form.userName || undefined, desiredOutcome: form.desiredOutcome || undefined }),
       });
       const data = await readPipelineResponse(response, (event) => setProgressEvents((previous) => [...previous, event])) as Partial<PipelineResult> | null;
       if (!data?.score || !Array.isArray(data.findings) || !Array.isArray(data.sources) || typeof data.letter !== "string") {
@@ -200,6 +206,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
         setExhibitRemovalPending(false);
         setProgressEvents([]);
         setResult(data as PipelineResult);
+        setEditedLetter(data.letter);
         setResultRevision((previous) => previous + 1);
       }
     } catch (caught) {
@@ -218,6 +225,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     requestRef.current?.abort();
     setForm({ ...DEFAULT_FORM, caseType: selectedPack });
     setResult(null);
+    setEditedLetter("");
     setPreviousResult(null);
     setIsFictionalSample(false);
     setError(null);
@@ -228,6 +236,8 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     setExhibitRemovalPending(false);
     setSaveRequested(false);
     setSaveMessage(null);
+    clearPendingCaseSave();
+    setPendingSaveReady(false);
     setStage(1);
     if (fileRef.current) fileRef.current.value = "";
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -246,10 +256,31 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
         { label: "Company response", text: form.companyResponse },
         ...additionalDocuments.map((item) => ({ label: item.label, text: item.text })),
       ];
-      const response = await fetch("/api/cases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companyName: form.companyName || "Unlisted company", packId: form.caseType, jurisdiction: form.country, documents, analysis: result, letter: result.letter }) });
+      const letter = editedLetter;
+      const input: SaveCaseInput = {
+        companyName: form.companyName || "Unlisted company",
+        packId: form.caseType,
+        jurisdiction: form.country,
+        documents,
+        analysis: { ...result, letter },
+        letter,
+      };
+      const response = await fetch("/api/cases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
       const payload = await response.json().catch(() => ({})) as { error?: string; case?: { id: string } };
-      if (response.status === 401) { setSaveMessage("Sign in to save this case. Your guest analysis is still available here."); return; }
+      if (response.status === 401) {
+        try {
+          storePendingCaseSave(input);
+          setPendingSaveReady(true);
+          setSaveMessage("Sign in to finish saving. Your case is held in this browser tab only until you complete sign-in.");
+        } catch {
+          setPendingSaveReady(false);
+          setSaveMessage("Sign in to save this case, but this browser could not hold the case for you. Keep this page open, sign in in another tab, then choose Save case again.");
+        }
+        return;
+      }
       if (!response.ok) throw new Error(payload.error || "This case could not be saved.");
+      clearPendingCaseSave();
+      setPendingSaveReady(false);
       setSaveMessage("Case saved privately to your account.");
       if (payload.case?.id) window.setTimeout(() => router.push(`/cases/${payload.case?.id}`), 500);
     } catch (caught) { setSaveMessage(caught instanceof Error ? caught.message : "This case could not be saved."); }
@@ -258,13 +289,13 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
 
   if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus">
       <section className="save-case-panel" aria-label="Save case">
-      <label className="save-case-choice"><input type="checkbox" checked={saveRequested} onChange={(event) => { setSaveRequested(event.target.checked); setSaveMessage(null); }} /> Save the complete case to my private account</label>
+      <label className="save-case-choice"><input type="checkbox" checked={saveRequested} onChange={(event) => { const checked = event.target.checked; setSaveRequested(checked); setSaveMessage(null); if (!checked) { clearPendingCaseSave(); setPendingSaveReady(false); } }} /> Save the complete case to my private account</label>
       <p>Optional. Includes the documents, analysis, and draft letter. Nothing is saved unless you check this box and choose Save case.</p>
       <button className="secondary-button" type="button" disabled={!saveRequested || saving || exhibitRemovalPending} onClick={() => void saveCase()}>{saving ? "Saving…" : "Save case"}<span aria-hidden="true">→</span></button>
       {exhibitRemovalPending ? <p className="save-case-message">Recheck the remaining evidence before saving so the saved documents and analysis stay aligned.</p> : null}
-      {saveMessage ? <p className="save-case-message" role="status">{saveMessage}{saveMessage.startsWith("Sign in") ? <> <a href="/sign-in">Sign in</a> or <a href="/sign-up">create an account</a>.</> : null}</p> : null}
+      {saveMessage ? <p className="save-case-message" role="status">{saveMessage}{pendingSaveReady ? <> <a href="/sign-in?next=%2Fcases%2Fcontinue-save">Sign in</a> or <a href="/sign-up?next=%2Fcases%2Fcontinue-save">create an account</a>.</> : saveMessage.startsWith("Sign in to save this case") ? <> <a href="/sign-in" target="_blank" rel="noopener noreferrer">Sign in in another tab</a> or <a href="/sign-up" target="_blank" rel="noopener noreferrer">create an account in another tab</a>.</> : null}</p> : null}
     </section>
-    <CaseResult key={resultRevision} result={result} previousResult={previousResult} additionalDocuments={additionalDocuments} exhibitRemovalPending={exhibitRemovalPending} onRemoveDocument={(id) => { setAdditionalDocuments((previous) => previous.filter((document) => document.id !== id)); setExhibitRemovalPending(true); setNotice("The displayed analysis still includes this exhibit. Recheck to analyze the remaining evidence."); }} isFictionalSample={isFictionalSample} onReset={reset} onRecheck={recheck} rechecking={running} progressEvents={progressEvents} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} />
+    <CaseResult key={resultRevision} result={result} previousResult={previousResult} additionalDocuments={additionalDocuments} exhibitRemovalPending={exhibitRemovalPending} onRemoveDocument={(id) => { setAdditionalDocuments((previous) => previous.filter((document) => document.id !== id)); setExhibitRemovalPending(true); setNotice("The displayed analysis still includes this exhibit. Recheck to analyze the remaining evidence."); }} isFictionalSample={isFictionalSample} onReset={reset} onRecheck={recheck} rechecking={running} progressEvents={progressEvents} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} onLetterChange={setEditedLetter} />
   </div>;
 
   return (
@@ -294,8 +325,13 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
             <div className="form-grid intake-choice-grid">
               <label htmlFor="company-name">Company name <span className="required-note">Optional</span><input id="company-name" list="company-options" value={form.companyName} maxLength={200} onChange={(event) => update("companyName", event.target.value)} placeholder="Type any company name" /><datalist id="company-options">{COMPANIES.map((company) => <option key={company.slug} value={company.name} />)}</datalist><span className="field-hint">{hasCompanyCoverage ? `Reviewed sources available for this complaint and jurisdiction (checked ${matchedCompany?.reviewedOn}); source coverage does not establish eligibility.` : matchedCompany ? `${matchedCompany.name} has a directory entry, but not for this complaint and jurisdiction. Company-specific research may be limited.` : "Unlisted companies are welcome; company-specific research may be limited."}</span></label>
               <label htmlFor="country">Research jurisdiction<select id="country" value={form.country} onChange={(event) => update("country", event.target.value as Country)}>{COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.label}</option>)}</select></label>
-              <label htmlFor="case-type" className="full-width">What’s the issue?<select id="case-type" value={form.caseType} onChange={(event) => update("caseType", event.target.value)}>{CASE_TYPES.map((pack) => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label>
+              <label htmlFor="case-type" className="full-width">What’s the issue?<select id="case-type" value={form.caseType} onChange={(event) => setForm((previous) => ({ ...previous, caseType: event.target.value, scopeAnswers: {} }))}>{CASE_TYPES.map((pack) => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label>
             </div>
+            <fieldset className="scope-answer-fields"><legend>Details that may affect which information is relevant</legend><p className="field-hint">Optional. Leave any answer blank if you do not know it. These are your answers, separate from details found in your documents; they are not legal advice or an eligibility decision.</p><div className="form-grid">{SCOPE_QUESTIONS[form.caseType as keyof typeof SCOPE_QUESTIONS]?.map((question) => {
+              const id = `scope-${question.key}`;
+              const value = form.scopeAnswers[question.key] ?? "";
+              return <label key={question.key} htmlFor={id} className={question.type === "textarea" ? "full-width" : undefined}>{question.label}<span className="required-note">Optional</span>{question.type === "select" ? <select id={id} value={value} onChange={(event) => setForm((previous) => ({ ...previous, scopeAnswers: { ...previous.scopeAnswers, [question.key]: event.target.value } }))}><option value="">Not sure / not provided</option>{question.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : question.type === "textarea" ? <textarea id={id} value={value} maxLength={3000} onChange={(event) => setForm((previous) => ({ ...previous, scopeAnswers: { ...previous.scopeAnswers, [question.key]: event.target.value } }))} /> : <input id={id} type={question.type} value={value} maxLength={200} onChange={(event) => setForm((previous) => ({ ...previous, scopeAnswers: { ...previous.scopeAnswers, [question.key]: event.target.value } }))} />}<span className="field-hint">{question.help}</span></label>;
+            })}</div></fieldset>
             <p className="field-hint jurisdiction-hint">The applicable rules may also depend on your route, state, sector, or contract.</p>
             <div className="submission-row"><button className="primary-button" type="button" onClick={continueToDocuments}>Continue to documents <span aria-hidden="true">→</span></button></div>
             </> : null}
@@ -314,7 +350,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
             </> : null}
             {stage === 3 ? <>
               <p className="eyebrow intake-stage-label">Step 3 · Check before analysis</p>
-              <div className="intake-review"><dl><div><dt>Company</dt><dd>{form.companyName || "Not listed"}</dd></div><div><dt>Research jurisdiction</dt><dd>{COUNTRIES.find((country) => country.code === form.country)?.label}</dd></div><div><dt>Complaint type</dt><dd>{CASE_TYPES.find((pack) => pack.id === form.caseType)?.label}</dd></div><div><dt>Primary document</dt><dd>{fileName || `${form.documentText.length.toLocaleString("en-IN")} characters pasted`}</dd></div><div><dt>Company response</dt><dd>{form.companyResponse.length.toLocaleString("en-IN")} characters</dd></div><div><dt>Additional exhibits</dt><dd>{additionalDocuments.length}</dd></div></dl></div>
+              <div className="intake-review"><dl><div><dt>Company</dt><dd>{form.companyName || "Not listed"}</dd></div><div><dt>Research jurisdiction</dt><dd>{COUNTRIES.find((country) => country.code === form.country)?.label}</dd></div><div><dt>Complaint type</dt><dd>{CASE_TYPES.find((pack) => pack.id === form.caseType)?.label}</dd></div><div><dt>Scope answers provided</dt><dd>{Object.values(form.scopeAnswers).filter(Boolean).length} · optional details</dd></div><div><dt>Primary document</dt><dd>{fileName || `${form.documentText.length.toLocaleString("en-IN")} characters pasted`}</dd></div><div><dt>Company response</dt><dd>{form.companyResponse.length.toLocaleString("en-IN")} characters</dd></div><div><dt>Additional exhibits</dt><dd>{additionalDocuments.length}</dd></div></dl></div>
               <p className="privacy-note">Your text is sent to the configured analysis and research providers. Guest cases are not saved. After analysis, you can choose whether to save the full case to a private account.</p>
               <div className="submission-row"><button className="secondary-button" type="button" onClick={() => { setError(null); setStage(2); }}>Back to documents</button><button className="primary-button" type="submit" disabled={running}>{running ? "Analysis in progress" : "Analyze my case"}<span aria-hidden="true">→</span></button></div>
             </> : null}

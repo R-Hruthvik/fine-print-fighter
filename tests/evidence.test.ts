@@ -23,6 +23,14 @@ test('no evidence cannot have a strong rating', () => {
   assert.equal(score.rating,'weak');
   assert.equal(score.coverage,'none');
 });
+test('matching quotes and an optimistic model stance cannot raise the rating before claim relation review', () => {
+  const finding: Finding = {...candidate, applicability:'supported', claimRelation:'unreviewed'};
+  const score = constrainScore([finding], {rating:'strong',reasons:['Model proposed strong'],evidenceToGather:[]});
+  assert.equal(score.rating,'weak');
+  assert.equal(score.coverage,'limited');
+  assert.match(score.reasons[0],/1 of 1/);
+  assert.match(score.reasons[1],/claim relation is unreviewed/i);
+});
 test('opposing evidence caps even an explicitly applicable strong case', () => {
   const findings: Finding[] = [{...candidate,applicability:'supported'}, {...candidate,id:'f2',stance:'favors-company',applicability:'supported'}];
   assert.notEqual(constrainScore(findings,{rating:'strong',reasons:[],evidenceToGather:[]}).rating,'strong');

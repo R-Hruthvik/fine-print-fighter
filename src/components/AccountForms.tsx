@@ -6,6 +6,9 @@ import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react
 import { createClient } from "@/lib/supabase/client";
 
 type AccountMode = "sign-in" | "sign-up" | "reset-password";
+function safeNextPath(value: string | null): string | null {
+  return value?.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\") ? value : null;
+}
 const subscribeToLocation = () => () => {};
 const getCallbackMessage = () => {
   if (typeof window === "undefined") return "";
@@ -14,7 +17,7 @@ const getCallbackMessage = () => {
   return message ? "authentication-error" : "";
 };
 
-export function AccountForm({ mode }: { mode: AccountMode }) {
+export function AccountForm({ mode, nextPath }: { mode: AccountMode; nextPath?: string | null }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,6 +27,7 @@ export function AccountForm({ mode }: { mode: AccountMode }) {
   const [recoverySession, setRecoverySession] = useState(false);
   const supabase = createClient();
   const callbackMessage = useSyncExternalStore(subscribeToLocation, getCallbackMessage, () => "");
+  const requestedNextPath = safeNextPath(nextPath ?? null);
 
   useEffect(() => {
     if (!supabase || mode !== "reset-password") return;
@@ -39,19 +43,32 @@ export function AccountForm({ mode }: { mode: AccountMode }) {
       if (mode === "sign-in") {
         const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
         if (authError) throw authError;
-        const requested = new URLSearchParams(window.location.search).get("next");
-        router.push(requested?.startsWith("/") && !requested.startsWith("//") && !requested.startsWith("/\\") ? requested : "/cases");
+        const requested = requestedNextPath ?? safeNextPath(new URLSearchParams(window.location.search).get("next"));
+        router.push(requested ?? "/cases");
       } else if (mode === "sign-up") {
-        const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=%2Fprofile` } });
+        const requested = requestedNextPath ?? safeNextPath(new URLSearchParams(window.location.search).get("next")) ?? "/profile";
+        const callback = new URL("/auth/callback", window.location.origin);
+        callback.searchParams.set("next", requested);
+        const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: callback.toString() } });
         if (authError) throw authError;
-        setMessage(data.session ? "Your account is ready. You can now save cases." : "Check your email to verify your account before signing in.");
+        if (data.session) router.push(requested);
+        else setMessage("Check your email to verify your account before signing in. Keep this browser tab open to finish saving your case after verification.");
       } else if (recoverySession) {
         const { error: authError } = await supabase.auth.updateUser({ password });
         if (authError) throw authError;
         await supabase.auth.signOut();
-        router.replace("/sign-in?message=password-updated");
+        const requested = requestedNextPath ?? safeNextPath(new URLSearchParams(window.location.search).get("next"));
+        const signIn = new URL("/sign-in", window.location.origin);
+        signIn.searchParams.set("message", "password-updated");
+        if (requested) signIn.searchParams.set("next", requested);
+        router.replace(`${signIn.pathname}${signIn.search}`);
       } else {
-        const { error: authError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/callback?next=%2Freset-password` });
+        const requested = requestedNextPath ?? safeNextPath(new URLSearchParams(window.location.search).get("next"));
+        const resetPage = new URL("/reset-password", window.location.origin);
+        if (requested) resetPage.searchParams.set("next", requested);
+        const callback = new URL("/auth/callback", window.location.origin);
+        callback.searchParams.set("next", `${resetPage.pathname}${resetPage.search}`);
+        const { error: authError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: callback.toString() });
         if (authError) throw authError;
         setMessage("If an account uses that email, a password reset link is on its way.");
       }
@@ -69,7 +86,7 @@ export function AccountForm({ mode }: { mode: AccountMode }) {
     {callbackStatus ? <p className="account-message" role="status">{callbackStatus}</p> : null}
     {message ? <p className="account-message" role="status">{message}</p> : null}
     <button className="primary-button" disabled={working} type="submit">{working ? "Working…" : mode === "sign-in" ? "Sign in" : mode === "sign-up" ? "Create account" : recoverySession ? "Update password" : "Send reset link"}<span aria-hidden="true">→</span></button>
-    {mode === "sign-in" ? <p className="account-switch"><Link href="/reset-password">Forgot your password?</Link></p> : null}
+    {mode === "sign-in" ? <p className="account-switch"><Link href={requestedNextPath ? `/reset-password?next=${encodeURIComponent(requestedNextPath)}` : "/reset-password"}>Forgot your password?</Link></p> : null}
   </form>;
 }
 

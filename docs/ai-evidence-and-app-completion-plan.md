@@ -4,21 +4,31 @@
 
 Make Fine Print Fighter useful for organizing a consumer complaint while keeping a clear boundary between what a user's documents say, what an official source says, and what may or may not apply to the user's circumstances. The app prepares a reviewable draft; it does not decide legal eligibility, send letters, or file complaints.
 
-This is a plan only. Provider status checks and a live pipeline run are deliberately deferred to the integration phase.
+This document tracks implementation and remaining release work. Provider status checks and a live pipeline run are deliberately deferred to the integration phase.
 
-## Current State
+## Implementation Status (2026-10-26)
 
-The app already has a multi-stage pipeline: document extraction, query planning, web search, company-side objection research, finding evaluation, scoring, letter drafting, and escalation suggestions. Extracted values are retained only when they can be matched back to the primary document, with matching excerpts in `factEvidence`. The company response and exhibits remain separate inputs.
+The local implementation now has the first evidence and case-continuity safeguards. This is not a production integration sign-off: Supabase migrations still need application and two-account verification, and no live provider request or provider status check has been made.
 
-The main evidence limitation is that current external findings are checked against Tavily search-result snippets. A finding is called verified when its quote appears in the returned snippet and its URL uses HTTP or HTTPS. That establishes quote traceability to the search result, but does not establish the publisher, page contents, freshness, jurisdiction, policy version, claim support, or legal applicability.
+- **Implemented locally:** pack-specific scope questions; guest save continuation held in session storage with expiry; explicit save consent after authentication; safe local `next` handling; saving the edited letter; expanded saved-case evidence review; immutable analysis-run history and atomic reanalysis; export of run history; typed source profiles for each complaint pack and India/EU/US; source quote matching against extracted page text; limited authority classification and conservative evidence-coverage gating.
+- **Still needed before calling evidence evaluation complete:** a redacted, expert-labeled evaluation set; measurable retrieval, quote, relation, applicability, abstention and security gates; stronger source freshness and claim applicability checks; systematic conflict evaluation; and review of how the scope answers change outputs across all packs.
+- **Integration deferred:** apply and verify the new Supabase migrations in a non-production project, check provider configuration/status, run synthetic live requests, exercise email verification/reset, verify RLS with two accounts, and perform account-backed save/reanalysis/export/deletion flows. No provider status or live pipeline operation was performed for this implementation pass.
 
-Three end-to-end product gaps also need to be closed:
+The current evidence pipeline now treats search results as candidate sources, extracts selected pages through the retrieval provider, retains bounded source text and offsets, and distinguishes quote traceability from source authority and applicability. The classifier is deliberately conservative; source-domain recognition does not establish that a rule applies to a user's facts.
 
-1. Saving after editing a complaint letter currently posts the generated `result.letter`, not the edited letter held inside `CaseResult`.
-2. Guests who choose to save are sent to sign-in or sign-up without a reliable return path to the in-memory analysis and save action.
-3. Saved-case review shows a summary, findings, letter, and documents, but omits much of the stored source list, source excerpts, facts and provenance, remedy details, and escalation context.
+## Previous Baseline and Remaining Risks
 
-The source model currently stores a URL, title, snippet, retrieval time, query and broad kind. It does not store a fetched page snapshot, content hash, publication/effective dates, source authority review, redirect status, or quote offsets. Reanalysis replaces the previous saved analysis.
+The app has a multi-stage pipeline: document extraction, query planning, web search, company-side objection research, finding evaluation, scoring, letter drafting, and escalation suggestions. Extracted values are retained only when they can be matched back to the primary document, with matching excerpts in `factEvidence`. The company response and exhibits remain separate inputs.
+
+Remaining evidence limitations include freshness and effective-date tracking, complete applicability checks, and a broad labeled regression set. A quote match establishes traceability to retained retrieved text, but does not establish that the publisher is authoritative, the text is current, a policy version matches the event, a claim is supported, or a legal rule applies.
+
+The following items are addressed locally and still need account-backed integration verification:
+
+1. The edited complaint letter is included in the save payload and the continuation flow preserves the analysis until save, cancellation, or expiry.
+2. Guests choosing save receive a safe sign-in/sign-up return path and must confirm the save again after authenticating.
+3. Saved-case review includes source records, excerpts, facts/provenance, remedy limits and escalation context; reanalysis retains earlier runs and export includes the run history.
+
+The source model stores bounded retrieved page text, source URL/title, retrieval details, content hash, authority classification, and quote offsets. It still does not establish publication/effective dates or robustly detect changed pages. Reanalysis archives each prior analysis run atomically before promoting the new result.
 
 ## Evidence Model and User-Facing States
 
@@ -129,7 +139,7 @@ Use the provenance model conceptually: a run activity used user documents and so
 
 ## Full-App Completion Phases
 
-### Phase 1 — Fix case continuity and saved review
+### Phase 1 — Case continuity and saved review (implemented locally; integration verification remains)
 
 - Save the user's edited letter instead of `result.letter`.
 - Design a consent-aware guest save continuation. Do not write case data before the explicit unchecked-by-default opt-in. Preserve the in-memory analysis through signup/signin only for the short continuation window, state clearly what is held temporarily, and clear it after successful save, cancellation, or expiry. Prefer client memory/session-scoped temporary state; do not silently create an anonymous database row.
@@ -137,14 +147,14 @@ Use the provenance model conceptually: a run activity used user documents and so
 - Expand saved-case review to include source list, excerpts, claim/document provenance, conflicts, missing facts, remedy limitations and escalation suggestions. Link each finding to its source evidence.
 - Make reanalysis versioned. Preserve previous runs and the user's edited letter; tell the user when the current run is being replaced/promoted.
 
-### Phase 2 — Define source registry and evidence schemas
+### Phase 2 — Source registry and evidence schemas (initial implementation complete)
 
 - Add versioned metadata types for `Claim`, `GroundingEdge`, `SourceSnapshot`, `Conflict`, evidence status, and immutable `AnalysisRun`.
 - Add curated source profiles for each of the three packs and India/EU/US, distinguishing official regulators, company material and official explainers. Set the directory's reviewed date only after opening the sources, recording applicable category/jurisdiction, limitations and review owner.
 - Add pack-specific facts required to establish scope, with explicit unknown states. Keep source authority separate from jurisdiction applicability.
 - Maintain backwards-compatible parsing for saved cases that lack the new fields.
 
-### Phase 3 — Replace snippet-only evidence with source retrieval
+### Phase 3 — Source retrieval (selected-page extraction implemented; freshness hardening remains)
 
 - Preserve search as candidate discovery.
 - Restrict/boost searches using reviewed regulator/company domains; separate query intent and retain the query for provenance.
@@ -153,7 +163,7 @@ Use the provenance model conceptually: a run activity used user documents and so
 - Implement deterministic exact-quote-and-offset verification and separate authority/freshness/scope evaluations.
 - Never label secondary or similar-case material as an authoritative rule.
 
-### Phase 4 — Build evidence evaluation and abstention behavior
+### Phase 4 — Evidence evaluation and abstention (initial conservative gating implemented; evaluation remains)
 
 - Make claims atomic and typed (consumer fact, company assertion, rule, policy, inference).
 - Evaluate retrieved passage relevance, support/oppose/qualify relation, possible negation/exception, source scope, and event-date applicability separately.
@@ -161,7 +171,7 @@ Use the provenance model conceptually: a run activity used user documents and so
 - Gate on severe unsupported claims: fabricated deadlines, compensation entitlements, eligibility, source citations or company contacts must be blocked from the letter and shown as unknown.
 - Keep score labels descriptive of evidence coverage, not probability of winning.
 
-### Phase 5 — Persist provenance and security controls
+### Phase 5 — Provenance and security controls (run history and atomic reanalysis implemented; integration verification remains)
 
 - Add immutable `analysis_runs` records linked to the owner-scoped case; store pack/model/prompt versions, user evidence IDs/hashes, source snapshot metadata, typed claims/grounding, conflicts, warnings, result and timestamp.
 - Keep documents private under RLS and server-side ownership checks. Continue to keep service-role secrets server-only.
@@ -169,7 +179,7 @@ Use the provenance model conceptually: a run activity used user documents and so
 - Add retention/deletion behavior for snapshots and document text; do not save guest cases.
 - Add prompt-injection, SSRF and PII/logging threat cases before enabling direct page fetching or increasing provider context.
 
-### Phase 6 — Build a representative evaluation set
+### Phase 6 — Representative evaluation set (not started)
 
 Create a redacted, versioned evaluation set across all three packs and three jurisdictions, including cases where the correct outcome is “unknown” or “no authoritative source found.” Include listed/unlisted companies, changed policy dates, source outages, missing facts, conflicting documents and prompt injection.
 

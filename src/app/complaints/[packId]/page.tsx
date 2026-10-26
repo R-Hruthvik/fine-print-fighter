@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { SiteShell, PageIntro } from "@/components/SiteShell";
-import { CASE_TYPES, getPack } from "@/lib/packs";
+import { CASE_TYPES, COUNTRIES, getPack } from "@/lib/packs";
+import { getSourceProfile } from "@/lib/source-registry";
 
 const copy: Record<string, { intro: string; useful: string[]; questions: string[] }> = {
   "flight-delay": { intro: "A useful review starts with the actual journey and the airline’s explanation. Route, operating carrier, timing, and cause can all affect which rules are relevant.", useful: ["Booking confirmation and ticket number", "Scheduled and actual departure or arrival times", "Messages explaining the delay, cancellation, or rebooking", "Receipts for expenses and details of any assistance offered"], questions: ["Which airline operated the affected flight?", "Where did the journey start and end?", "What reason did the airline give, and when?"] },
@@ -29,6 +30,22 @@ async function ComplaintGuideContent({ params }: { params: Promise<{ packId: str
       <aside className="guide-note"><span className="small-label">Questions the review may explore</span><ol>{content.questions.map((item) => <li key={item}>{item}</li>)}</ol><p>Missing information may limit the result. It will not be filled in as fact.</p></aside>
     </div>
     <section className="jurisdiction-note"><h2>Jurisdiction matters.</h2><p>Initial research is scoped to India, the European Union, and the United States. The applicable rules may depend on where a service was provided, your route, the specific company, and your contract. A category match does not establish eligibility.</p></section>
+    <section className="official-starting-points" aria-labelledby="starting-points-heading">
+      <p className="eyebrow">Source notes</p><h2 id="starting-points-heading">Official starting points</h2>
+      <p>These pages were opened on 26 October 2026. They help orient research; they do not determine whether a rule applies to an individual case.</p>
+      {COUNTRIES.map((country) => {
+        const profile = getSourceProfile(pack.id, country.code as "IN" | "EU" | "US");
+        if (!profile) return null;
+        return <details className="source-profile" key={country.code}>
+          <summary>{country.label}<span>{profile.coverage === "limited" ? "Limited source coverage" : "Official sources reviewed"}</span></summary>
+          <ul className="ruled-list source-profile-list">{profile.sources.map((source) => <li key={source.url}>
+            <a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}<span className="sr-only"> (opens in a new tab)</span></a>
+            <small>{source.publisher} · {source.kind.replaceAll("_", " ")}. {source.scope}</small>
+          </li>)}</ul>
+          <p className="field-hint">{profile.limitation}</p>
+        </details>;
+      })}
+    </section>
     <div className="closing-cta"><h2>Ready to review your documents?</h2><p>You can try the analysis as a guest. Your case is not saved unless you choose to save it after analysis.</p><Link className="primary-button" href={`/complaints/new?pack=${pack.id}`}>Continue with this complaint <span aria-hidden="true">→</span></Link></div>
   </>;
 }

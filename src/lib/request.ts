@@ -1,6 +1,7 @@
 import { getPack } from "./packs";
 import type { Country } from "./types";
 import { ProviderError } from "./provider";
+import { normalizeScopeAnswers } from "./scope-answers";
 
 export class RequestError extends Error {
   constructor(public status: number, public code: string, message: string, public retryable = false, public retryAfterSeconds?: number) {
@@ -33,6 +34,7 @@ export function parseCaseRequest(input: unknown) {
   });
   if (b.documentText.length + companyResponse.length + additionalLength > 30000) throw new RequestError(413, "INPUT_TOO_LARGE", "Combined case documents exceed 30,000 characters.");
   if (typeof b.packId !== "string" || !getPack(b.packId)) throw new RequestError(400, "INVALID_REQUEST", "Choose a supported case type.");
+  const packId = b.packId;
   if (typeof b.country !== "string" || !["IN", "EU", "US"].includes(b.country)) throw new RequestError(400, "INVALID_REQUEST", "Choose India, the European Union, or the United States.");
   const option = (key: string, limit: number, fallback?: string) => {
     const value = b[key];
@@ -41,12 +43,16 @@ export function parseCaseRequest(input: unknown) {
     if (value.length > limit) throw new RequestError(413, "INPUT_TOO_LARGE", `${key} exceeds ${limit} characters.`);
     return value.trim() || fallback;
   };
+  let scopeAnswers;
+  try { scopeAnswers = normalizeScopeAnswers(packId as Parameters<typeof normalizeScopeAnswers>[0], b.scopeAnswers); }
+  catch (error) { throw new RequestError(400, "INVALID_SCOPE_ANSWERS", error instanceof Error ? error.message : "Check the scope answers."); }
   return {
     documentText: b.documentText,
     companyResponse: companyResponse.trim(),
     additionalDocuments: parsedDocuments,
-    packId: b.packId,
+    packId,
     country: b.country as Country,
+    scopeAnswers,
     companyName: option("companyName", 200),
     userName: option("userName", 200),
     desiredOutcome: option("desiredOutcome", 2000),

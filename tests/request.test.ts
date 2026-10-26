@@ -19,6 +19,18 @@ test("valid case requests normalize empty options and keep the original document
   assert.equal(parsed.userName, undefined);
   assert.equal(parsed.language, "English");
   assert.equal(parsed.replyDeadline, "14 days");
+  assert.equal(parsed.scopeAnswers?.answers.length, 4);
+  assert.ok(parsed.scopeAnswers?.answers.every((answer) => answer.status === "not_provided" && answer.provenance === "user_answer"));
+});
+
+test("scope answers are bounded, pack-specific, and preserve optional unknowns", () => {
+  const parsed = parseCaseRequest({ ...valid, scopeAnswers: { signupDate: "2026-03-01", billingPartner: "App store" } });
+  assert.equal(parsed.scopeAnswers?.answers.find((answer) => answer.key === "signupDate")?.value, "2026-03-01");
+  assert.equal(parsed.scopeAnswers?.answers.find((answer) => answer.key === "signupDate")?.provenance, "user_answer");
+  assert.equal(parsed.scopeAnswers?.answers.find((answer) => answer.key === "cancellationDate")?.value, null);
+  assert.throws(() => parseCaseRequest({ ...valid, scopeAnswers: { operatingCarrier: "Air India" } }), /selected complaint type/i);
+  assert.throws(() => parseCaseRequest({ ...valid, scopeAnswers: { signupDate: "2026-02-31" } }), /valid date/i);
+  assert.throws(() => parseCaseRequest({ ...valid, scopeAnswers: { signupDate: "x".repeat(201) } }), /exceeds/i);
 });
 
 test("JSON reader rejects malformed and oversized actual streams regardless of content length", async () => {

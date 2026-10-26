@@ -1,9 +1,12 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { runPipeline } from "../src/lib/pipeline";
+import { classifySourceProfiles, runPipeline } from "../src/lib/pipeline";
 import { getPack, registerPacks } from "../src/lib/packs";
 import { extractFacts } from "../src/lib/llm";
 import { describeRemedy } from "../src/lib/pipeline";
+import { normalizeScopeAnswers } from "../src/lib/scope-answers";
+import { getSourceProfile } from "../src/lib/source-registry";
+import type { Source } from "../src/lib/types";
 
 const fetchOriginal = global.fetch;
 const originalNebius = process.env.NEBIUS_API_KEY;
@@ -109,7 +112,7 @@ test("all launch packs and scopes return cited factual letters and preserve conf
       const result = await runPipeline({ documentText: "Example billed INR 1200.", pack: getPack(packId)!, country });
       assert.equal(result.findings[0].verified, true);
       assert.equal(result.findings[0].applicability, "unknown");
-      assert.equal(result.score.rating, "medium");
+      assert.equal(result.score.rating, "weak");
       assert.equal(result.letterCitations[0].url, "https://example.com/policy");
       assert.match(result.letter, /\[1\]/);
       assert.match(result.letter, /confirm whether this information applies/);
@@ -117,4 +120,47 @@ test("all launch packs and scopes return cited factual letters and preserve conf
       assert.equal(result.country, country);
     }
   }
+});
+
+test("user-entered scope answers are kept distinct, used in searches, and remain unverified", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  process.env.TAVILY_API_KEY = "test";
+  const pack = getPack("flight-delay")!;
+  let extraction = true;
+  global.fetch = async input => {
+    if (String(input).includes("tavily")) return Response.json({ results: [] });
+    const output = extraction
+      ? { company: "Air India", airline: "Air India", companyPosition: [] }
+      : { findings: [], unverified: [], unanswered: [], conflicts: [] };
+    extraction = false;
+    return Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] });
+  };
+  const scopeAnswers = normalizeScopeAnswers("flight-delay", {
+    operatingCarrier: "Air India", origin: "Delhi", destination: "London", eventDate: "2026-10-25",
+    timeline: "The flight departed six hours late.",
+  });
+  const result = await runPipeline({ documentText: "Flight was delayed.", pack, country: "IN", companyName: "Air India", scopeAnswers });
+  assert.equal(result.scopeAnswers?.answers.find(answer => answer.key === "origin")?.provenance, "user_answer");
+  assert.ok(result.queries.every(query => /Delhi|London|2026-10-25/.test(query)));
+  assert.ok(result.warnings.some(warning => /user-entered/i.test(warning)));
+});
+
+test("source authority is assigned only by exact reviewed pages or a matching listed company domain", () => {
+  const pack = getPack("flight-delay")!;
+  const exact = getSourceProfile("flight-delay", "IN")!.sources[0].url;
+  const sources: Source[] = [
+    { id: "s1", url: exact + "#page", title: "DGCA", snippet: "Regulator page.", retrievedAt: "2026-10-26" },
+    { id: "s2", url: "https://www.dgca.gov.in/another-page", title: "Other page", snippet: "Not in registry.", retrievedAt: "2026-10-26" },
+    { id: "s3", url: "https://www.airindia.com/terms", title: "Air India", snippet: "Company page.", retrievedAt: "2026-10-26" },
+  ];
+  classifySourceProfiles(sources, pack, "IN", "Air India");
+  assert.equal(sources[0].authority, "regulator");
+  assert.equal(sources[0].jurisdiction, "IN");
+  assert.equal(sources[1].authority, "unreviewed");
+  assert.equal(sources[2].authority, "official_company");
+  assert.equal(sources[2].jurisdiction, "IN");
+  assert.ok(sources.every(source => source.freshness === "unknown"));
+  const unlisted: Source[] = [{ ...sources[2], id: "s4" }];
+  classifySourceProfiles(unlisted, pack, "IN", "Unlisted Air Service");
+  assert.equal(unlisted[0].authority, "unreviewed");
 });
