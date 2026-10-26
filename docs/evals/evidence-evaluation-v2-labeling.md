@@ -52,4 +52,15 @@ Each case records a synthetic scenario, pack/jurisdiction, supplied and delibera
 
 ## Candidate set format
 
-Candidate records use `tests/fixtures/evidence-eval-v2.ts`. The initial set contains one synthetic scenario for each of the 9 pack/jurisdiction pairs and two claim candidates per source: a narrowly scoped claim and an overbroad or unsupported claim. Proposed labels and reviewer fields are visibly marked pending. The source material was opened on 2026-10-26; dated or changing rules still require review against the eventual scenario date. A candidate set is not called an expert-labeled holdout until the review and adjudication steps above are complete.
+Candidate records live in `tests/fixtures/evidence-eval-v2.json` and are typed through `tests/fixtures/evidence-eval-v2.ts`. The initial set contains one synthetic scenario for each of the 9 pack/jurisdiction pairs and two claim candidates per source: a narrowly scoped claim and an overbroad or unsupported claim. Proposed labels and reviewer fields are visibly marked pending. The source material was opened on 2026-10-26; dated or changing rules still require review against the eventual scenario date. A candidate set is not called an expert-labeled holdout until the review and adjudication steps above are complete.
+
+## Offline review workflow
+
+The candidate fixture is immutable during review. Reviewer packets and label sidecars live under the git-ignored `evidence-eval-reviews/v2/` directory and contain only synthetic scenario data plus reviewer annotations.
+
+1. Export two separate packets with pseudonymous aliases: `npm run evidence-eval:review -- export --reviewer reviewer-one` and repeat with a different alias. The packet hides proposed labels and rationales.
+2. Each reviewer fills every claim's `relation`, `applicability`, `relationRationale`, and `applicabilityRationale` fields, then imports their packet with `npm run evidence-eval:review -- import reviewer-one.packet.json`.
+3. Run `npm run evidence-eval:review -- report` to check coverage and agreement. The report omits rationales and never marks the set ready for holdout use.
+4. If reviewers disagree, create a template with `npm run evidence-eval:review -- adjudication-template --reviewer reviewer-three`. A distinct qualified adjudicator fills each disagreement and submits it with `npm run evidence-eval:review -- adjudicate adjudication.packet.json`.
+
+The tool rejects changed candidate content, duplicate aliases/labels, unknown cases, incomplete labels, unsafe file paths, and malformed adjudication. It writes files atomically with owner-only permissions. It checks that aliases differ but cannot verify that they belong to separate people or that reviewers are qualified. It cannot certify legal accuracy or promote labels to gold status; qualified sign-off remains a separate human decision. No provider is called by this workflow.
