@@ -6,15 +6,68 @@ export class ProviderError extends Error {
   }
 }
 
+export interface ModelProviderConfig {
+  provider: 'nebius' | 'openai-compatible';
+  apiKey?: string;
+  baseUrl: string;
+  model: string;
+}
+
+const NEBIUS_BASE_URL = 'https://api.tokenfactory.nebius.com/v1';
+const NEBIUS_MODEL = 'nvidia/Nemotron-3_5-Lightning';
+
+/**
+ * Resolve server-only provider settings. Nebius remains the default and the
+ * required provider for the hackathon build; compatible endpoints are for
+ * local development or other explicitly configured deployments.
+ */
+export function modelProviderConfig(): ModelProviderConfig {
+  const selected = process.env.LLM_PROVIDER || 'nebius';
+  if (selected === 'nebius') {
+    return {
+      provider: 'nebius',
+      apiKey: process.env.NEBIUS_API_KEY,
+      baseUrl: (process.env.NEBIUS_BASE_URL || NEBIUS_BASE_URL).replace(/\/$/, ''),
+      model: process.env.NEMOTRON_MODEL || NEBIUS_MODEL,
+    };
+  }
+  if (selected === 'openai-compatible') {
+    return {
+      provider: 'openai-compatible',
+      apiKey: process.env.OPENAI_COMPATIBLE_API_KEY,
+      baseUrl: (process.env.OPENAI_COMPATIBLE_BASE_URL || '').replace(/\/$/, ''),
+      model: process.env.OPENAI_COMPATIBLE_MODEL || '',
+    };
+  }
+  throw new ProviderError('The configured model provider is not supported.',503,'MODEL_PROVIDER_INVALID',false);
+}
+
+function requireModelProviderConfig(): ModelProviderConfig {
+  const config = modelProviderConfig();
+  if (!config.baseUrl || !config.model || (config.provider === 'nebius' && !config.apiKey)) {
+    throw new ProviderError(
+      config.provider === 'nebius'
+        ? 'Analysis is not configured. Set the Nebius API key on the server.'
+        : 'Analysis is not configured. Set the OpenAI-compatible base URL and model on the server.',
+      503,
+      'CONFIGURATION_MISSING',
+      false,
+    );
+  }
+  return config;
+}
+
+function authHeaders(apiKey?: string): Record<string,string> {
+  return {'Content-Type':'application/json',...(apiKey ? {Authorization:`Bearer ${apiKey}`} : {})};
+}
+
 function providerHttpError(status:number):ProviderError {
   if(status===402) return new ProviderError('Analysis is unavailable because the configured provider account needs attention. Check its credits and model access.',502,'PROVIDER_ACCOUNT_ACTION_REQUIRED',false);
   return new ProviderError('The analysis model is unavailable. Please try again later.',502,'MODEL_UNAVAILABLE',status===429 || status>=500);
 }
 
 export function requireProviderConfiguration(): void {
-  if (!process.env.NEBIUS_API_KEY) {
-    throw new ProviderError('Analysis is not configured. Set the Nebius API key on the server.',503,'CONFIGURATION_MISSING',false);
-  }
+  requireModelProviderConfig();
 }
 
 export interface LLMCallOptions {
@@ -27,12 +80,10 @@ export interface LLMCallOptions {
 }
 
 export async function llmToolTurn(options: { messages: Record<string, unknown>[]; tools: Record<string, unknown>[]; signal?: AbortSignal }): Promise<Record<string, unknown>> {
-  const key=process.env.NEBIUS_API_KEY;
-  if (!key) throw new ProviderError('The analysis model is not configured on the server.',503,'CONFIGURATION_MISSING',false);
-  const base=(process.env.NEBIUS_BASE_URL || 'https://api.tokenfactory.nebius.com/v1').replace(/\/$/,'');
+  const config=requireModelProviderConfig();
   const timeout=options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(25_000)]) : AbortSignal.timeout(25_000);
   try {
-    const response=await fetch(`${base}/chat/completions`,{method:'POST',signal:timeout,headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},body:JSON.stringify({model:process.env.NEMOTRON_MODEL || 'nvidia/Nemotron-3_5-Lightning',temperature:0.1,max_tokens:1800,messages:options.messages,tools:options.tools,tool_choice:'auto'})});
+    const response=await fetch(`${config.baseUrl}/chat/completions`,{method:'POST',signal:timeout,headers:authHeaders(config.apiKey),body:JSON.stringify({model:config.model,temperature:0.1,max_tokens:1800,messages:options.messages,tools:options.tools,tool_choice:'auto'})});
     if (!response.ok) throw providerHttpError(response.status);
     const envelope:unknown=await response.json();
     if (!isObject(envelope) || !Array.isArray(envelope.choices) || !isObject(envelope.choices[0]) || !isObject(envelope.choices[0].message)) throw new ProviderError('The investigation model returned an invalid response.',502,'INVALID_MODEL_RESPONSE',true);
@@ -46,20 +97,18 @@ export async function llmToolTurn(options: { messages: Record<string, unknown>[]
 }
 
 export async function llmJSON<T>(options:LLMCallOptions, schemaHint:string, validate:(value:unknown)=>value is T):Promise<T> {
-  const key=process.env.NEBIUS_API_KEY;
-  if (!key) throw new ProviderError('The analysis model is not configured on the server.',503,'CONFIGURATION_MISSING',false);
-  const base=(process.env.NEBIUS_BASE_URL || 'https://api.tokenfactory.nebius.com/v1').replace(/\/$/,'');
+  const config=requireModelProviderConfig();
   const attempts=Math.min(2,Math.max(1,(options.retries ?? 1)+1));
   let repair=false;
   for (let attempt=0;attempt<attempts;attempt++) {
     options.signal?.throwIfAborted();
     const signal=options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(25_000)]) : AbortSignal.timeout(25_000);
     try {
-      const response=await fetch(`${base}/chat/completions`, {
+      const response=await fetch(`${config.baseUrl}/chat/completions`, {
         method:'POST',signal,
-        headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`},
+        headers:authHeaders(config.apiKey),
         body:JSON.stringify({
-          model:process.env.NEMOTRON_MODEL || 'nvidia/Nemotron-3_5-Lightning',
+          model:config.model,
           temperature:options.temperature ?? 0.1,max_tokens:options.maxTokens ?? 2500,
           messages:[{role:'system',content:options.system},{role:'user',content:options.user + (repair ? `\nYour last response was invalid. Return only JSON matching this schema: ${schemaHint}` : '')}],
           response_format:{type:'json_object'},

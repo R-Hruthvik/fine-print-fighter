@@ -1,14 +1,18 @@
 import { strict as assert } from 'node:assert';
 import { test, afterEach } from 'node:test';
-import { llmJSON, ProviderError } from '../src/lib/provider';
+import { llmJSON, llmToolTurn, ProviderError } from '../src/lib/provider';
 import { researchWithWarnings } from '../src/lib/tavily';
 
 const originalFetch = global.fetch;
-const originalKey = process.env.NEBIUS_API_KEY;
+const providerEnv = ['LLM_PROVIDER','NEBIUS_API_KEY','NEBIUS_BASE_URL','NEMOTRON_MODEL','OPENAI_COMPATIBLE_API_KEY','OPENAI_COMPATIBLE_BASE_URL','OPENAI_COMPATIBLE_MODEL'] as const;
+const originalProviderEnv = Object.fromEntries(providerEnv.map(name => [name, process.env[name]]));
 const originalTavilyKey = process.env.TAVILY_API_KEY;
 afterEach(() => {
   global.fetch = originalFetch;
-  if (originalKey === undefined) delete process.env.NEBIUS_API_KEY; else process.env.NEBIUS_API_KEY=originalKey;
+  for (const name of providerEnv) {
+    const value=originalProviderEnv[name];
+    if (value === undefined) delete process.env[name]; else process.env[name]=value;
+  }
   if (originalTavilyKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY=originalTavilyKey;
 });
 const object = (value:unknown): value is {ok:boolean} => typeof value === 'object' && value !== null && 'ok' in value && typeof value.ok === 'boolean';
@@ -25,9 +29,76 @@ test('provider errors never expose raw response contents', async () => {
   await assert.rejects(() => llmJSON({system:'system',user:'user'},'{ok:boolean}',object), error => error instanceof ProviderError && error.status===502 && !error.message.includes('secret'));
 });
 test('missing configuration fails before calling fetch', async () => {
+  delete process.env.LLM_PROVIDER;
   delete process.env.NEBIUS_API_KEY;
   let calls=0;global.fetch=async () => {calls++;return Response.json({});};
   await assert.rejects(() => llmJSON({system:'system',user:'user'},'{}',object), error => error instanceof ProviderError && error.status===503);
+  assert.equal(calls,0);
+});
+test('Nebius stays the default OpenAI-compatible provider and selects Nemotron', async () => {
+  delete process.env.LLM_PROVIDER;
+  process.env.NEBIUS_API_KEY='test-nebius-key';
+  process.env.NEBIUS_BASE_URL='https://tokenfactory.example/v1/';
+  process.env.NEMOTRON_MODEL='nvidia/test-nemotron';
+  let requestUrl='';
+  let requestInit:RequestInit|undefined;
+  global.fetch=async (input,init) => {
+    requestUrl=String(input);requestInit=init;
+    return Response.json({choices:[{message:{content:'{"ok":true}'}}]});
+  };
+  const result=await llmJSON({system:'system',user:'user'},'{ok:boolean}',object);
+  assert.deepEqual(result,{ok:true});
+  assert.equal(requestUrl,'https://tokenfactory.example/v1/chat/completions');
+  const body=JSON.parse(String(requestInit?.body)) as {model:string};
+  assert.equal(body.model,'nvidia/test-nemotron');
+  assert.equal(new Headers(requestInit?.headers).get('authorization'),'Bearer test-nebius-key');
+});
+test('generic OpenAI-compatible provider uses configured URL, model and optional bearer key', async () => {
+  process.env.LLM_PROVIDER='openai-compatible';
+  process.env.OPENAI_COMPATIBLE_API_KEY='test-compatible-key';
+  process.env.OPENAI_COMPATIBLE_BASE_URL='http://127.0.0.1:1234/v1/';
+  process.env.OPENAI_COMPATIBLE_MODEL='local-model';
+  let requestUrl='';
+  let requestInit:RequestInit|undefined;
+  global.fetch=async (input,init) => {
+    requestUrl=String(input);requestInit=init;
+    return Response.json({choices:[{message:{content:'{"ok":true}'}}]});
+  };
+  const result=await llmJSON({system:'system',user:'user'},'{ok:boolean}',object);
+  assert.deepEqual(result,{ok:true});
+  assert.equal(requestUrl,'http://127.0.0.1:1234/v1/chat/completions');
+  const body=JSON.parse(String(requestInit?.body)) as {model:string};
+  assert.equal(body.model,'local-model');
+  assert.equal(new Headers(requestInit?.headers).get('authorization'),'Bearer test-compatible-key');
+});
+test('generic OpenAI-compatible provider supports tool-call requests', async () => {
+  process.env.LLM_PROVIDER='openai-compatible';
+  delete process.env.OPENAI_COMPATIBLE_API_KEY;
+  process.env.OPENAI_COMPATIBLE_BASE_URL='http://127.0.0.1:1234/v1';
+  process.env.OPENAI_COMPATIBLE_MODEL='local-model';
+  let requestUrl='';
+  let requestInit:RequestInit|undefined;
+  global.fetch=async (input,init) => {
+    requestUrl=String(input);requestInit=init;
+    return Response.json({choices:[{message:{role:'assistant',tool_calls:[{id:'call-1'}]}}]});
+  };
+  const response=await llmToolTurn({messages:[{role:'user',content:'check the evidence'}],tools:[{type:'function',function:{name:'search'}}]});
+  assert.equal(requestUrl,'http://127.0.0.1:1234/v1/chat/completions');
+  assert.equal(new Headers(requestInit?.headers).get('authorization'),null);
+  assert.deepEqual(response.tool_calls,[{id:'call-1'}]);
+});
+test('compatible provider configuration errors are safe and fail before network calls', async () => {
+  process.env.LLM_PROVIDER='openai-compatible';
+  delete process.env.OPENAI_COMPATIBLE_BASE_URL;
+  delete process.env.OPENAI_COMPATIBLE_MODEL;
+  let calls=0;global.fetch=async () => {calls++;return Response.json({});};
+  await assert.rejects(() => llmJSON({system:'system',user:'user'},'{}',object), error => error instanceof ProviderError && error.status===503 && error.code==='CONFIGURATION_MISSING');
+  assert.equal(calls,0);
+});
+test('unknown model provider fails closed before network calls', async () => {
+  process.env.LLM_PROVIDER='not-a-provider';
+  let calls=0;global.fetch=async () => {calls++;return Response.json({});};
+  await assert.rejects(() => llmJSON({system:'system',user:'user'},'{}',object), error => error instanceof ProviderError && error.status===503 && error.code==='MODEL_PROVIDER_INVALID');
   assert.equal(calls,0);
 });
 test('research deduplicates URLs while retaining query provenance', async () => {

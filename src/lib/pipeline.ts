@@ -1,7 +1,7 @@
 import type { PipelineResult, RulePack, Country, ExtractedFacts, CompensationResult, AnalysisProgressEvent, AnalysisStage, ScopeAnswers, Source } from "./types";
 import { extractFacts, planQueries, evaluateFindings, scoreCase, draftLetter, escalateLadder } from "./llm";
 import { researchWithWarnings } from "./tavily";
-import { ProviderError, requireProviderConfiguration } from "./provider";
+import { modelProviderConfig, ProviderError, requireProviderConfiguration } from "./provider";
 import { investigateObjections } from "./rebuttal";
 import { normalizeScopeAnswers } from "./scope-answers";
 import { getSourceProfile } from "./source-registry";
@@ -135,7 +135,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     letterCitations: citations, escalation, unanswered, unverified, conflicts,
     warnings: [...new Set(warnings)], country,
     rebuttalLab:{objections:rebuttalLab.objections,actions:rebuttalLab.actions},
-    run: { requestId, startedAt, durationMs: Date.now() - started, stageDurations, model: process.env.NEMOTRON_MODEL || "nvidia/Nemotron-3_5-Lightning", researchMode: process.env.TAVILY_API_KEY ? "keyed" : "keyless", packVersion: pack.version },
+    run: { requestId, startedAt, durationMs: Date.now() - started, stageDurations, model: modelProviderConfig().model, researchMode: process.env.TAVILY_API_KEY ? "keyed" : "keyless", packVersion: pack.version },
   };
 }
 
