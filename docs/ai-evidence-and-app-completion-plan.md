@@ -11,7 +11,7 @@ This document tracks implementation and remaining release work. Provider status 
 The local implementation now has the first evidence and case-continuity safeguards. This is not a production integration sign-off: Supabase migrations still need application and two-account verification, and no live provider request or provider status check has been made.
 
 - **Implemented locally:** pack-specific scope questions; guest save continuation held in session storage with expiry; explicit save consent after authentication; safe local `next` handling; saving the edited letter; expanded saved-case evidence review; immutable analysis-run history and atomic reanalysis; export of run history; typed source profiles for each complaint pack and India/EU/US; source quote matching against extracted page text; limited authority classification and conservative evidence-coverage gating.
-- **Still needed before calling evidence evaluation complete:** a redacted, expert-labeled evaluation set; measurable retrieval, quote, relation, applicability, abstention and security gates; stronger source freshness and claim applicability checks; systematic conflict evaluation; and review of how the scope answers change outputs across all packs.
+- **Still needed before calling evidence evaluation complete:** an expert-labeled held-out set; retrieval, claim-relation, applicability, and security metrics that need live/provider-backed or human grading; stronger source freshness and claim applicability checks; systematic conflict evaluation; and review of how scope answers change outputs across all packs. The first deterministic offline baseline now covers all nine pack/jurisdiction pairs plus quote, citation, authority, freshness, conflict, and injection fixtures. See [Evidence Evaluation v1](evals/evidence-evaluation-v1.md).
 - **Integration deferred:** apply and verify the new Supabase migrations in a non-production project, check provider configuration/status, run synthetic live requests, exercise email verification/reset, verify RLS with two accounts, and perform account-backed save/reanalysis/export/deletion flows. No provider status or live pipeline operation was performed for this implementation pass.
 
 The current evidence pipeline now treats search results as candidate sources, extracts selected pages through the retrieval provider, retains bounded source text and offsets, and distinguishes quote traceability from source authority and applicability. The classifier is deliberately conservative; source-domain recognition does not establish that a rule applies to a user's facts.
@@ -179,7 +179,7 @@ Use the provenance model conceptually: a run activity used user documents and so
 - Add retention/deletion behavior for snapshots and document text; do not save guest cases.
 - Add prompt-injection, SSRF and PII/logging threat cases before enabling direct page fetching or increasing provider context.
 
-### Phase 6 — Representative evaluation set (not started)
+### Phase 6 — Representative evaluation set (deterministic v1 baseline implemented; expert-labeled and model evaluation remains)
 
 Create a redacted, versioned evaluation set across all three packs and three jurisdictions, including cases where the correct outcome is “unknown” or “no authoritative source found.” Include listed/unlisted companies, changed policy dates, source outages, missing facts, conflicting documents and prompt injection.
 
