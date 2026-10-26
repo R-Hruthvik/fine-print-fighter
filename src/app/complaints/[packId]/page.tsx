@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { SiteShell, PageIntro } from "@/components/SiteShell";
 import { CASE_TYPES, getPack } from "@/lib/packs";
 
@@ -11,12 +12,16 @@ const copy: Record<string, { intro: string; useful: string[]; questions: string[
 
 export function generateStaticParams() { return CASE_TYPES.map((pack) => ({ packId: pack.id })); }
 
-export default async function ComplaintGuidePage({ params }: { params: Promise<{ packId: string }> }) {
+export default function ComplaintGuidePage({ params }: { params: Promise<{ packId: string }> }) {
+  return <SiteShell><div className="content-wrap"><Suspense fallback={<p className="feedback notice-feedback" role="status">Loading complaint guide…</p>}><ComplaintGuideContent params={params} /></Suspense></div></SiteShell>;
+}
+
+async function ComplaintGuideContent({ params }: { params: Promise<{ packId: string }> }) {
   const { packId } = await params;
   const pack = getPack(packId);
   const content = copy[packId];
   if (!pack || !content) notFound();
-  return <SiteShell><div className="content-wrap">
+  return <>
     <div className="backline"><Link href="/complaints">← All complaint types</Link><span> / </span><span>{pack.name}</span></div>
     <PageIntro eyebrow="Complaint guide" title={pack.name} body={content.intro} />
     <div className="guide-columns">
@@ -25,5 +30,5 @@ export default async function ComplaintGuidePage({ params }: { params: Promise<{
     </div>
     <section className="jurisdiction-note"><h2>Jurisdiction matters.</h2><p>Initial research is scoped to India, the European Union, and the United States. The applicable rules may depend on where a service was provided, your route, the specific company, and your contract. A category match does not establish eligibility.</p></section>
     <div className="closing-cta"><h2>Ready to review your documents?</h2><p>You can try the analysis as a guest. Your case is not saved unless you choose to save it after analysis.</p><Link className="primary-button" href={`/complaints/new?pack=${pack.id}`}>Continue with this complaint <span aria-hidden="true">→</span></Link></div>
-  </div></SiteShell>;
+  </>;
 }

@@ -19,13 +19,13 @@ export const COMPANIES: CompanyEntry[] = [
     slug: "air-india", name: "Air India", officialDomain: "airindia.com",
     summary: "Flight disruption information and complaint channels published by Air India. EU claim information is route-specific.",
     packIds: ["flight-delay"], jurisdictions: ["IN", "EU"],
-    sourceUrls: ["https://www.airindia.com/in/en/passenger-rights.html", "https://www.airindia.com/in/en/frequently-asked-questions/booking.html", "https://www.airindia.com/in/en/contact-us/customer-support-portal/flight-distruption.html"], reviewedOn: "2026-10-25",
+    sourceUrls: ["https://www.airindia.com/in/en/passenger-rights.html", "https://www.airindia.com/in/en/frequently-asked-questions/booking.html", "https://www.airindia.com/in/en/contact-us/customer-support-portal/flight-distruption.html", "https://www.dgca.gov.in/digigov-portal/Upload?attachId=we1PSlOuQhYdHcwKKrm7ew%3D%3D&flag=iframeAttachView", "https://europa.eu/youreurope/citizens/travel/passenger-rights/air/"], reviewedOn: "2026-10-26",
   },
   {
     slug: "netflix", name: "Netflix", officialDomain: "netflix.com",
     summary: "Official membership cancellation instructions and US regulator guidance on recurring subscriptions. Billing and cancellation rights can depend on the billing partner and jurisdiction.",
     packIds: ["subscription-cancel"], jurisdictions: ["US"],
-    sourceUrls: ["https://help.netflix.com/en/node/407", "https://consumer.ftc.gov/articles/getting-and-out-free-trials-auto-renewals-and-negative-option-subscriptions"], reviewedOn: "2026-10-25",
+    sourceUrls: ["https://help.netflix.com/en/node/407", "https://consumer.ftc.gov/articles/getting-and-out-free-trials-auto-renewals-and-negative-option-subscriptions"], reviewedOn: "2026-10-26",
   },
 ];
 

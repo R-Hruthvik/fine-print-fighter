@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { isValidCaseAnalysis } from "@/lib/saved-cases";
+import { readJSON, RequestError } from "@/lib/request";
 
 type Context = { params: Promise<{ caseId: string }> };
 function unavailable() { return NextResponse.json({ error: "Private case storage is not configured." }, { status: 503 }); }
@@ -27,10 +29,14 @@ export async function PATCH(request: Request, { params }: Context) {
   try { ctx = await clientForUser(); } catch { return unavailable(); }
   if ("response" in ctx) return ctx.response;
   let input: unknown;
-  try { input = await request.json(); } catch { return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 }); }
-  if (!input || typeof input !== "object" || !("analysis" in input) || !("letter" in input) || typeof (input as { letter?: unknown }).letter !== "string") return NextResponse.json({ error: "A new analysis and letter are required." }, { status: 400 });
+  try { input = await readJSON(request); }
+  catch (error) {
+    const status = error instanceof RequestError ? error.status : 400;
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Request body must be valid JSON." }, { status });
+  }
+  if (!input || typeof input !== "object" || Array.isArray(input) || !("analysis" in input) || !("letter" in input)) return NextResponse.json({ error: "A new analysis and letter are required." }, { status: 400 });
   const body = input as { analysis: unknown; letter: string };
-  if (body.letter.length > 30_000 || JSON.stringify(body.analysis).length > 1_000_000) return NextResponse.json({ error: "Updated analysis is too large." }, { status: 413 });
+  if (!isValidCaseAnalysis(body.analysis, body.letter)) return NextResponse.json({ error: "Updated analysis is incomplete or exceeds storage limits." }, { status: 400 });
   const { caseId } = await params;
   const { data, error } = await ctx.supabase.from("cases").update({ analysis: body.analysis, letter: body.letter, updated_at: new Date().toISOString() }).eq("id", caseId).select("id, updated_at").maybeSingle();
   if (error) return NextResponse.json({ error: "Updated analysis could not be saved." }, { status: 500 });

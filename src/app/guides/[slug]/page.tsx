@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { SiteShell, PageIntro } from "@/components/SiteShell";
 import { GUIDES, packLabel } from "@/lib/catalog";
 
@@ -11,16 +12,20 @@ const detail: Record<string, { intro: string; steps: string[]; sources: { title:
 
 export function generateStaticParams() { return GUIDES.map((guide) => ({ slug: guide.slug })); }
 
-export default async function GuidePage({ params }: { params: Promise<{ slug: string }> }) {
+export default function GuidePage({ params }: { params: Promise<{ slug: string }> }) {
+  return <SiteShell><div className="content-wrap"><Suspense fallback={<p className="feedback notice-feedback" role="status">Loading guide…</p>}><GuideContent params={params} /></Suspense></div></SiteShell>;
+}
+
+async function GuideContent({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const guide = GUIDES.find((entry) => entry.slug === slug);
   const content = detail[slug];
   if (!guide || !content) notFound();
-  return <SiteShell><div className="content-wrap">
+  return <>
     <div className="backline"><Link href="/guides">← All guides</Link><span> / </span><Link href={`/complaints/${guide.packId}`}>{packLabel(guide.packId)}</Link></div>
     <PageIntro eyebrow="Practical guide" title={guide.title} body={content.intro} />
     <section className="guide-steps"><p className="eyebrow">A simple checklist</p><ol>{content.steps.map((step, index) => <li key={step}><span className="row-index">0{index + 1}</span><p>{step}</p></li>)}</ol></section>
     <section className="source-section"><p className="eyebrow">Official reading</p><h2>Check the original material</h2><p>This page is a starting point. Check current official information and whether it applies to your circumstances.</p><ul className="source-list">{content.sources.map((source) => <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.title} <span aria-hidden="true">↗</span></a></li>)}</ul></section>
     <div className="closing-cta"><h2>Continue with a complaint review.</h2><p>Gather the relevant documents first. Analysis can be used as a guest and does not contact anyone.</p><Link className="primary-button" href={`/complaints/new?pack=${guide.packId}`}>Start with {packLabel(guide.packId)} <span aria-hidden="true">→</span></Link></div>
-  </div></SiteShell>;
+  </>;
 }

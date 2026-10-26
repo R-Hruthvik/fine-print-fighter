@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type AccountMode = "sign-in" | "sign-up" | "reset-password";
+const subscribeToLocation = () => () => {};
+const getCallbackMessage = () => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("message")?.slice(0, 200) ?? "";
 
 export function AccountForm({ mode }: { mode: AccountMode }) {
   const router = useRouter();
@@ -16,6 +18,7 @@ export function AccountForm({ mode }: { mode: AccountMode }) {
   const [working, setWorking] = useState(false);
   const [recoverySession, setRecoverySession] = useState(false);
   const supabase = createClient();
+  const callbackMessage = useSyncExternalStore(subscribeToLocation, getCallbackMessage, () => "");
 
   useEffect(() => {
     if (!supabase || mode !== "reset-password") return;
@@ -52,10 +55,11 @@ export function AccountForm({ mode }: { mode: AccountMode }) {
   }
 
   const askPassword = mode !== "reset-password" || recoverySession;
+  const visibleError = error || (mode === "sign-in" ? callbackMessage : "");
   return <form className="account-form" onSubmit={submit}>
     {mode !== "reset-password" || !recoverySession ? <label htmlFor="account-email">Email address<input id="account-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label> : null}
     {askPassword ? <label htmlFor="account-password">{recoverySession ? "New password" : "Password"}<input id="account-password" type="password" autoComplete={mode === "sign-in" ? "current-password" : "new-password"} minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} /></label> : null}
-    {error ? <p className="account-error" role="alert">{error}</p> : null}
+    {visibleError ? <p className="account-error" role="alert">{visibleError}</p> : null}
     {message ? <p className="account-message" role="status">{message}</p> : null}
     <button className="primary-button" disabled={working} type="submit">{working ? "Working…" : mode === "sign-in" ? "Sign in" : mode === "sign-up" ? "Create account" : recoverySession ? "Update password" : "Send reset link"}<span aria-hidden="true">→</span></button>
     {mode === "sign-in" ? <p className="account-switch"><Link href="/reset-password">Forgot your password?</Link></p> : null}
