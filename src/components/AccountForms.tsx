@@ -7,7 +7,12 @@ import { createClient } from "@/lib/supabase/client";
 
 type AccountMode = "sign-in" | "sign-up" | "reset-password";
 const subscribeToLocation = () => () => {};
-const getCallbackMessage = () => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("message")?.slice(0, 200) ?? "";
+const getCallbackMessage = () => {
+  if (typeof window === "undefined") return "";
+  const message = new URLSearchParams(window.location.search).get("message");
+  if (message === "password-updated") return "password-updated";
+  return message ? "authentication-error" : "";
+};
 
 export function AccountForm({ mode }: { mode: AccountMode }) {
   const router = useRouter();
@@ -43,8 +48,8 @@ export function AccountForm({ mode }: { mode: AccountMode }) {
       } else if (recoverySession) {
         const { error: authError } = await supabase.auth.updateUser({ password });
         if (authError) throw authError;
-        setMessage("Password updated. You can now sign in with your new password.");
-        setPassword("");
+        await supabase.auth.signOut();
+        router.replace("/sign-in?message=password-updated");
       } else {
         const { error: authError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/callback?next=%2Freset-password` });
         if (authError) throw authError;
@@ -55,11 +60,13 @@ export function AccountForm({ mode }: { mode: AccountMode }) {
   }
 
   const askPassword = mode !== "reset-password" || recoverySession;
-  const visibleError = error || (mode === "sign-in" ? callbackMessage : "");
+  const visibleError = error || (mode === "sign-in" && callbackMessage === "authentication-error" ? "Authentication could not be completed. Please try again." : "");
+  const callbackStatus = mode === "sign-in" && callbackMessage === "password-updated" ? "Your password has been updated. Sign in with your new password." : "";
   return <form className="account-form" onSubmit={submit}>
     {mode !== "reset-password" || !recoverySession ? <label htmlFor="account-email">Email address<input id="account-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label> : null}
     {askPassword ? <label htmlFor="account-password">{recoverySession ? "New password" : "Password"}<input id="account-password" type="password" autoComplete={mode === "sign-in" ? "current-password" : "new-password"} minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} /></label> : null}
     {visibleError ? <p className="account-error" role="alert">{visibleError}</p> : null}
+    {callbackStatus ? <p className="account-message" role="status">{callbackStatus}</p> : null}
     {message ? <p className="account-message" role="status">{message}</p> : null}
     <button className="primary-button" disabled={working} type="submit">{working ? "Working…" : mode === "sign-in" ? "Sign in" : mode === "sign-up" ? "Create account" : recoverySession ? "Update password" : "Send reset link"}<span aria-hidden="true">→</span></button>
     {mode === "sign-in" ? <p className="account-switch"><Link href="/reset-password">Forgot your password?</Link></p> : null}

@@ -86,8 +86,8 @@ begin
   if not exists (select 1 from pg_constraint where conrelid = 'public.cases'::regclass and conname = 'cases_company_name_length_check') then
     alter table public.cases add constraint cases_company_name_length_check check (char_length(company_name) between 1 and 200);
   end if;
-  if not exists (select 1 from pg_constraint where conrelid = 'public.cases'::regclass and conname = 'cases_pack_id_format_check') then
-    alter table public.cases add constraint cases_pack_id_format_check check (pack_id ~ '^[a-z]+(-[a-z]+)+$');
+  if not exists (select 1 from pg_constraint where conrelid = 'public.cases'::regclass and conname = 'cases_pack_id_supported_check') then
+    alter table public.cases add constraint cases_pack_id_supported_check check (pack_id in ('flight-delay', 'subscription-cancel', 'surprise-bill'));
   end if;
   if not exists (select 1 from pg_constraint where conrelid = 'public.cases'::regclass and conname = 'cases_jurisdiction_check') then
     alter table public.cases add constraint cases_jurisdiction_check check (jurisdiction in ('IN', 'EU', 'US'));

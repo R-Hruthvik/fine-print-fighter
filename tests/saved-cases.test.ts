@@ -28,3 +28,10 @@ test("saved-case validation rejects malformed analysis and oversized saved conte
   assert.equal(validateSaveCase(saveInput({ letter: "x".repeat(30_001) })), false);
   assert.equal(validateSaveCase(saveInput({ documents: [{ label: "Primary document", text: "Ticket" }] })), false);
 });
+
+test("saved-case validation accepts only supported packs, jurisdictions, and non-empty source text", () => {
+  assert.equal(validateSaveCase(saveInput({ packId: "unknown-pack" })), false);
+  assert.equal(validateSaveCase(saveInput({ jurisdiction: "UK" })), false);
+  assert.equal(validateSaveCase(saveInput({ jurisdiction: "EU" })), false);
+  assert.equal(validateSaveCase(saveInput({ documents: [{ label: "Primary document", text: " " }, { label: "Company response", text: "Reply" }] })), false);
+});

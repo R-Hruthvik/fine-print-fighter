@@ -1,4 +1,5 @@
 import type { Country, PipelineResult } from "./types";
+import { getPack } from "./packs";
 
 export type SavedCaseSummary = {
   id: string;
@@ -95,13 +96,14 @@ export function validateSaveCase(value: unknown): value is SaveCaseInput {
   if (!value || typeof value !== "object") return false;
   const input = value as Partial<SaveCaseInput>;
   if (typeof input.companyName !== "string" || input.companyName.trim().length < 1 || input.companyName.length > 200) return false;
-  if (typeof input.packId !== "string" || !/^[a-z]+(?:-[a-z]+)+$/.test(input.packId)) return false;
+  if (typeof input.packId !== "string" || !getPack(input.packId)) return false;
   if (!("IN EU US".split(" ").includes(input.jurisdiction ?? ""))) return false;
   if (!Array.isArray(input.documents) || input.documents.length < 1 || input.documents.length > 20) return false;
-  if (!input.documents.every((doc) => doc && typeof doc.label === "string" && doc.label.length <= 200 && typeof doc.text === "string")) return false;
+  if (!input.documents.every((doc) => doc && typeof doc.label === "string" && doc.label.trim().length > 0 && doc.label.length <= 200
+    && typeof doc.text === "string" && doc.text.trim().length > 0)) return false;
   if (!input.documents.some((doc) => doc.label === "Primary document") || !input.documents.some((doc) => doc.label === "Company response")) return false;
   const documentCharacters = input.documents.reduce((total, doc) => total + doc.text.length, 0);
   if (documentCharacters > 30_000 || typeof input.letter !== "string" || input.letter.length > 30_000) return false;
-  if (!isValidCaseAnalysis(input.analysis, input.letter)) return false;
+  if (!isValidCaseAnalysis(input.analysis, input.letter) || input.analysis.country !== input.jurisdiction) return false;
   return true;
 }
