@@ -18,12 +18,37 @@ export interface ExtractedFactResult {
   evidence: Record<string, { documentId: string; label: string; excerpts: string[] }>;
 }
 
+export interface ScopeAnswer {
+  key: string;
+  label: string;
+  value: string | null;
+  status: "provided" | "not_provided";
+  provenance: "user_answer";
+}
+
+export interface ScopeAnswers {
+  packId: CaseType;
+  answers: ScopeAnswer[];
+}
+
 export interface Source {
   id: string;
   url: string;
   title: string;
   snippet: string;
   retrievedAt: string;
+  /** Search results are discovery leads; they are not retained page snapshots. */
+  retrieval?: "search_snippet" | "provider_extract" | "reviewed_catalog";
+  authority?: "regulator" | "official_company" | "official_explainer" | "secondary" | "unreviewed";
+  jurisdiction?: Country | "unknown";
+  freshness?: "unknown" | "current_checked" | "changed" | "stale" | "unavailable";
+  contentHash?: string;
+  publisher?: string;
+  requestedUrl?: string;
+  finalUrl?: string;
+  extractedAt?: string;
+  extractionStatus?: "extracted" | "failed" | "skipped_no_key" | "not_selected";
+  extractionFailure?: "rate_limited" | "timed_out" | "unavailable" | "invalid_response";
   kind?: "rules" | "company policy" | "similar cases";
   queries?: string[];
 }
@@ -35,6 +60,10 @@ export interface Finding {
   sourceIds: string[];
   supportingPassage: string;
   verified: boolean;
+  /** A traceability result only; it does not validate the claim's meaning. */
+  evidenceStatus?: "source_quote_matched" | "source_quote_unmatched";
+  claimRelation?: "unreviewed";
+  sourceMatches?: { sourceId: string; start: number; end: number; offsetBasis: "retained_source_text" }[];
   applicability?: "supported" | "unknown";
   verificationReason?: string;
 }
@@ -69,6 +98,8 @@ export interface EscalationStep {
 export interface PipelineResult {
   facts: ExtractedFacts;
   factEvidence: Record<string, { documentId: string; label: string; excerpts: string[] }>;
+  /** User-entered scope details remain separate from document-extracted facts. Optional for older saved runs. */
+  scopeAnswers?: ScopeAnswers;
   queries: string[];
   sources: Source[];
   findings: Finding[];

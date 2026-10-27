@@ -54,9 +54,13 @@ The server pipeline extracts facts, builds initial queries from pack templates, 
 
 | Variable | Purpose |
 | --- | --- |
-| `NEBIUS_API_KEY` | Server-side model key, required for analysis |
+| `LLM_PROVIDER` | `nebius` by default; `openai-compatible` is available for explicitly configured local/development testing only |
+| `NEBIUS_API_KEY` | Server-side Token Factory key, required by the default/hackathon provider |
 | `NEBIUS_BASE_URL` | OpenAI-compatible endpoint; default `https://api.tokenfactory.nebius.com/v1` |
 | `NEMOTRON_MODEL` | Model identifier available to your account; default `nvidia/Nemotron-3_5-Lightning` |
+| `OPENAI_COMPATIBLE_API_KEY` | Optional server-side key for the selected generic compatible endpoint |
+| `OPENAI_COMPATIBLE_BASE_URL` | Required when `LLM_PROVIDER=openai-compatible`; endpoint root ending in `/v1` or equivalent |
+| `OPENAI_COMPATIBLE_MODEL` | Required when `LLM_PROVIDER=openai-compatible`; model ID for that endpoint |
 | `TAVILY_API_KEY` | Optional server-side research key; absent means Tavily keyless mode with limited availability |
 | `ENABLE_STAGE_ROUTES` | Optional `true` enables development-only stage routes; always unavailable in production |
 

@@ -21,9 +21,13 @@ Set these through your host's secret/environment settings. For a local productio
 
 | Variable | Deployment value |
 | --- | --- |
+| `LLM_PROVIDER` | Set to `nebius` for the hackathon submission; this is the default. Do not select another provider for the submitted runtime. |
 | `NEBIUS_API_KEY` | Required secret: an authorized Token Factory key with inference access and sufficient budget |
 | `NEBIUS_BASE_URL` | `https://api.tokenfactory.nebius.com/v1`, unless you intentionally use another compatible authorized endpoint |
 | `NEMOTRON_MODEL` | A model available to your account; the default is `nvidia/Nemotron-3_5-Lightning` |
+| `OPENAI_COMPATIBLE_API_KEY` | Optional server-side key for local/development testing with an OpenAI-compatible endpoint; not a hackathon-compliant substitute |
+| `OPENAI_COMPATIBLE_BASE_URL` | Required with `LLM_PROVIDER=openai-compatible`; do not set this on the judge deployment |
+| `OPENAI_COMPATIBLE_MODEL` | Required with `LLM_PROVIDER=openai-compatible`; do not set this on the judge deployment |
 | `TAVILY_API_KEY` | Optional secret when keyless research is enabled; recommended for predictable account quotas during judging |
 | `ENABLE_STAGE_ROUTES` | Leave unset; individual stage routes are development interfaces and remain unavailable in production |
 | `UPSTASH_REDIS_REST_URL` | Required for production: HTTPS endpoint of a shared, single-region Upstash Redis database with EVAL support |

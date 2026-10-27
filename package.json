@@ -9,9 +9,12 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "tsc -p tests/tsconfig.json && node --test --experimental-test-isolation=none .test-build/tests/*.test.js",
+    "evidence-eval:review": "node scripts/evidence-eval-review.mjs",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.118.0",
     "@upstash/redis": "^1.39.0",
     "next": "16.4.2",
     "react": "19.3.0",

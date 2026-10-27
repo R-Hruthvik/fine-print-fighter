@@ -1,4 +1,4 @@
-import type { ExtractedFacts, ExtractedFactResult, Finding, Source, CaseScore, CompensationResult, EscalationStep, CaseType, Country } from './types';
+import type { ExtractedFacts, ExtractedFactResult, Finding, Source, CaseScore, CompensationResult, EscalationStep, CaseType, Country, ScopeAnswers } from './types';
 import { llmJSON, isObject, stringList, text } from './provider';
 import { constrainScore, resolveLetterCitations, verifyFindings } from './evidence';
 import { safeSearchEntity } from './query';
@@ -28,7 +28,12 @@ export async function extractFacts(documentText:string,pack:{id:CaseType;name:st
       const [integer,decimal]=String(Math.abs(value)).split('.');
       const grouped=integer.replace(/\B(?=(\d{3})+(?!\d))/g,',?');
       const pattern=`(?<![\\d.,-])[-−]?${grouped}${decimal?`\\.${decimal}`:''}(?!\\d|[.,]\\d)`;
-      return documentText.match(new RegExp(pattern))?.[0];
+      const match=documentText.match(new RegExp(pattern));
+      if (!match || match.index === undefined) return undefined;
+      const before=documentText.slice(0,match.index);
+      const signed=/[-−]\s*$/.test(before) || /^[-−]/.test(match[0]);
+      if ((value < 0) !== signed) return undefined;
+      return match[0];
     }
     return undefined;
   };
@@ -52,13 +57,32 @@ export async function extractFacts(documentText:string,pack:{id:CaseType;name:st
 }
 
 /** The search boundary receives a small allowlist, never the document or user preferences. */
-export async function planQueries(facts:ExtractedFacts,country:Country,pack:{searchPlan:{queries:string[]}},signal?:AbortSignal):Promise<{query:string;targets:string}[]> {
+export async function planQueries(facts:ExtractedFacts,country:Country,pack:{id?:CaseType;searchPlan:{queries:string[]}},signal?:AbortSignal,companyName?:string,scopeAnswers?:ScopeAnswers):Promise<{query:string;targets:string}[]> {
   signal?.throwIfAborted();
   const entity=(value:unknown,fallback:string):string => safeSearchEntity(value,fallback);
-  const company=entity(facts.company ?? facts.airline,'company');
-  const values:Record<string,string>={country,company,airline:company,sector:entity(facts.sector,'billing'),flightNumber:'',date:''};
+  const userValue=(key:string):string=>{
+    const answer=scopeAnswers?.answers.find(item=>item.key===key && item.status==="provided");
+    return answer?.value ? entity(answer.value,"") : "";
+  };
+  const company=entity(companyName || facts.company || facts.airline,'company');
+  const values:Record<string,string>={
+    country,company,airline:userValue("operatingCarrier") || company,
+    sector:userValue("sector") || entity(facts.sector,'billing'),
+    flightNumber:'',date:userValue("eventDate") || userValue("serviceDate") || userValue("billDate"),
+    origin:userValue("origin"),destination:userValue("destination"),
+    providerType:userValue("providerType"),billingPartner:userValue("billingPartner"),
+    signupChannel:userValue("signupChannel"),signupDate:userValue("signupDate"),
+    cancellationDate:userValue("cancellationDate"),insurerEobStatus:userValue("insurerEobStatus"),
+  };
+  const scopeContext=scopeAnswers?.packId==="flight-delay"
+    ? [(values.airline!=="company" ? "operating carrier "+values.airline : ""),values.origin ? "route "+values.origin+" to "+(values.destination || "unknown destination") : "",values.date ? "flight date "+values.date : ""].filter(Boolean).join("; ")
+    : scopeAnswers?.packId==="subscription-cancel"
+      ? [values.billingPartner ? "billing partner "+values.billingPartner : "",values.signupChannel ? "signup channel "+values.signupChannel : "",values.signupDate ? "signup date "+values.signupDate : "",values.cancellationDate ? "cancellation request date "+values.cancellationDate : ""].filter(Boolean).join("; ")
+      : scopeAnswers?.packId==="surprise-bill"
+        ? [values.sector ? "sector "+values.sector : "",values.providerType ? "provider type "+values.providerType : "",values.date ? "service or bill date "+values.date : "",values.insurerEobStatus ? "insurance/EOB status "+values.insurerEobStatus : ""].filter(Boolean).join("; ")
+        : "";
   return pack.searchPlan.queries.slice(0,6).map((template,index) => ({
-    query:template.replace(/\{([^}]+)\}/g,(_,key:string) => values[key] ?? '').replace(/\s+/g,' ').trim().slice(0,300),
+    query:[template.replace(/\{([^}]+)\}/g,(_,key:string) => values[key] ?? '').replace(/\s+/g,' ').trim(),scopeContext].filter(Boolean).join(" ").slice(0,300),
     targets:['rules','company policy','similar cases'][index%3],
   })).filter(query => query.query.length>0);
 }
@@ -112,13 +136,13 @@ function localDateConflicts(context:{primaryDocument?:string;companyResponse?:st
     return differences.length?[`Potential date conflict: primary document records ${primary.filter(item=>differences.some(difference=>difference.event===item.event)).map(item=>`“${item.date}” for ${item.event}`).join(", ")}; ${document.label} [${document.id}] records ${differences.map(item=>`“${item.date}” for ${item.event}`).join(", ")}. Review the surrounding text to confirm whether these dates refer to the same event.`]:[];
   });
 }
-export async function evaluateFindings(facts:ExtractedFacts,sources:Source[],pack:{evaluationPrompt:string},signal?:AbortSignal,context:{companyResponse?:string;additionalDocuments?:{id:string;label:string;text:string}[];primaryDocument?:string;factEvidence?:Record<string,{documentId:string;label:string;excerpts:string[]}>}={}):Promise<Evaluation> {
+export async function evaluateFindings(facts:ExtractedFacts,sources:Source[],pack:{evaluationPrompt:string},signal?:AbortSignal,context:{companyResponse?:string;additionalDocuments?:{id:string;label:string;text:string}[];primaryDocument?:string;factEvidence?:Record<string,{documentId:string;label:string;excerpts:string[]}>;scopeAnswers?:ScopeAnswers}={}):Promise<Evaluation> {
   const localConflicts=localAmountConflicts(facts,context);
   const documentConflicts=localDateConflicts(context);
   const deterministicConflicts=[...localConflicts,...documentConflicts];
   if (!sources.length) return {findings:[],unverified:[],unanswered:['No usable research sources were available. Applicable rules and policies remain unknown.'],conflicts:deterministicConflicts};
   const responseContext={companyResponse:context.companyResponse ?? "",additionalDocuments:(context.additionalDocuments ?? []).map(({id,label,text})=>({id,label,text}))};
-  const result=await llmJSON({system:SYSTEM,signal,maxTokens:3500,user:`Compare values in the primary document with source text, including points favoring the company. ${pack.evaluationPrompt}\nThe primary-document values below come only from the user's uploaded or pasted original document. Do not assume every sentence was written by the consumer; refer to the document and its exact excerpt. The separately labeled company response and additional exhibits are contextual evidence and must never replace primary-document values. If they disagree (especially on dates, amounts, or cancellation status), list the disagreement in conflicts and preserve each source's identity. Use exact string source IDs (s1, s2 etc), never numeric IDs. Each finding needs statement, stance (favors-customer|favors-company|unclear), sourceIds (string array), supportingPassage (one exact continuous quotation present in EVERY referenced source). Do not call a source applicable solely because it mentions a similar dispute. Keep unsupported hypotheses in unverified; missing facts and applicability questions in unanswered; conflicting source claims in conflicts. Return {findings,unverified,unanswered,conflicts}.\nPrimary-document values: ${JSON.stringify(facts)}\nSeparate company and exhibit context (IDs retained): ${JSON.stringify(responseContext)}\nSource data: ${JSON.stringify(sources)}`},'{findings:[{statement,stance,sourceIds,supportingPassage}],unverified:string[],unanswered:string[],conflicts:string[]}',validEvaluation);
+  const result=await llmJSON({system:SYSTEM,signal,maxTokens:3500,user:`Compare values in the primary document with source text, including points favoring the company. ${pack.evaluationPrompt}\nThe primary-document values below come only from the user's uploaded or pasted original document. Do not assume every sentence was written by the consumer; refer to the document and its exact excerpt. Scope answers are separate user-entered statements and are not confirmed by the documents; use them only as tentative context for scope, identify material conflicts with documents or the company response, and do not silently resolve them. The separately labeled company response and additional exhibits are contextual evidence and must never replace primary-document values. If evidence disagrees (especially on dates, amounts, or cancellation status), list the disagreement in conflicts and preserve each source's identity. Use exact string source IDs (s1, s2 etc), never numeric IDs. Each finding needs statement, stance (favors-customer|favors-company|unclear), sourceIds (string array), supportingPassage (one exact continuous quotation present in EVERY referenced source). Do not call a source applicable solely because it mentions a similar dispute. Keep unsupported hypotheses in unverified; missing facts and applicability questions in unanswered; conflicting source claims in conflicts. Return {findings,unverified,unanswered,conflicts}.\nPrimary-document values (extracted separately): ${JSON.stringify(facts)}\nUser-entered scope answers (not document-verified): ${JSON.stringify(context.scopeAnswers ?? null)}\nSeparate company and exhibit context (IDs retained): ${JSON.stringify(responseContext)}\nSource data: ${JSON.stringify(sources)}`},'{findings:[{statement,stance,sourceIds,supportingPassage}],unverified:string[],unanswered:string[],conflicts:string[]}',validEvaluation);
   const findings=verifyFindings(result.findings,sources);
   return {...result,findings,unverified:[...result.unverified,...findings.filter(finding => !finding.verified).map(finding => finding.statement)],unanswered:[...new Set([...result.unanswered,'Confirm the policy version, location, dates, and eligibility conditions before relying on a finding.'])],conflicts:[...new Set([...result.conflicts,...deterministicConflicts])]};
 }
