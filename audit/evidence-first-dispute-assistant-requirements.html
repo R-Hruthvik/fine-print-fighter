@@ -1,0 +1,110 @@
+<title>Evidence-first dispute assistant requirements</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root { --bg:#f4f1ea; --paper:#fbf9f4; --ink:#1c1b18; --muted:#5a564d; --line:#d8d2c5; --accent:#8a3b12; --warn:#a36a00; --danger:#9b2c2c; --ok:#2f6b3a; color-scheme:light; }
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141311;--paper:#1c1a17;--ink:#ece6d9;--muted:#a9a293;--line:#3a362f;--accent:#d98a5a;--warn:#d9a34a;--danger:#e07a7a;--ok:#7fb38a;color-scheme:dark;}}
+:root[data-theme="dark"]{--bg:#141311;--paper:#1c1a17;--ink:#ece6d9;--muted:#a9a293;--line:#3a362f;--accent:#d98a5a;--warn:#d9a34a;--danger:#e07a7a;--ok:#7fb38a;color-scheme:dark;}
+*{box-sizing:border-box} html,body{margin:0;padding:0} body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px}
+.wrap{max-width:1180px;margin:0 auto} h1{font-size:30px;margin:0 0 8px;text-wrap:balance} h2{font-size:22px;margin:28px 0 8px;text-wrap:balance} p{margin:0 0 12px} .eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:11px;color:var(--muted);margin:0 0 6px} .lede{color:var(--muted);max-width:72ch}
+table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0} th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top} th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid var(--line)} .tag.no{color:var(--danger);border-color:var(--danger)} .tag.assist{color:var(--warn);border-color:var(--warn)} .tag.yes{color:var(--ok);border-color:var(--ok)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:16px;margin:12px 0} .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+ul{margin:6px 0 12px 20px} li{margin:4px 0} code{font-family:ui-monospace,monospace;font-size:13px}
+</style>
+<div class="wrap">
+<p class="eyebrow">Positioning research</p>
+<h1>Requirements to become an evidence-first dispute assistant</h1>
+<p class="lede">The app should prepare, check, and cite a user-reviewed dispute record. The user alone sends, files, and tracks it externally. This report combines external best practices, an internal readiness audit, and a prioritized requirement set.</p>
+
+<h2>1. Is the app ready now?</h2>
+<p>Substantially yes. It never sends or files anything; analysis is transient unless the user explicitly saves; evidence is traceable but applicability remains deliberately unresolved; compensation is separated from entitlement; and disclosures are pervasive. Main gaps: unattainable strong ratings, stale test fixtures, and minor export/citation and accessibility verification gaps.</p>
+<table>
+<thead><tr><th>Area</th><th>Score</th><th>Key evidence</th><th>Gap</th></tr></thead>
+<tbody>
+<tr><td>Evidence quality &amp; traceability</td><td>9/10</td><td><code>evidence.ts:14-28</code>, <code>tavily.ts</code>, <code>llm.ts:121-123</code></td><td>Applicability hard-coded <code>unknown</code>, so <code>strong</code> can never be reached</td></tr>
+<tr><td>No sending/filing</td><td>10/10</td><td>No mailto/company endpoints; only extract and optional cases routes</td><td>Wording uses “complaint,” which may read like filing</td></tr>
+<tr><td>User control</td><td>9/10</td><td>Editable letter, exports edited text, reset, duplicate-run guard</td><td>Edited citation list is not re-resolved from edited letter</td></tr>
+<tr><td>Disclosures</td><td>9/10</td><td>SiteShell, CaseResult, FighterApp disclaimers</td><td>No standalone privacy/terms page</td></tr>
+<tr><td>Applicability uncertainty</td><td>9/10</td><td><code>evidence.ts:27</code>, pipeline warnings</td><td>No mechanism to mark applicability supported</td></tr>
+<tr><td>Compensation separation</td><td>10/10</td><td><code>pipeline.ts:29-34</code>, CaseResult remedy panel</td><td>None material</td></tr>
+<tr><td>Privacy</td><td>8/10</td><td>Optional saved cases, RLS, account deletion</td><td>Provider/hosting retention outside app control</td></tr>
+<tr><td>Tracking boundaries</td><td>9/10</td><td>HMACed IP, safe logs, no analytics scripts</td><td>Production fails closed if budget config missing</td></tr>
+<tr><td>Accessibility</td><td>7/10</td><td>Skip link, focus styles, labels/aria-live</td><td>No automated a11y audit; contrast/dark mode unaddressed</td></tr>
+<tr><td>Export/editing</td><td>8/10</td><td>Controlled editor, edited export, print</td><td>Citation list reflects original markers, not edited letter</td></tr>
+<tr><td>Escalation provenance</td><td>9/10</td><td>Unreviewed-pack/unknown labels</td><td>No sourced contacts, deadlines, or applicability review yet</td></tr>
+<tr><td>Verification state</td><td>Partial</td><td>Typecheck passes; historical 45 tests</td><td>Current suite has 4 failures from stale fixtures</td></tr>
+</tbody>
+</table>
+
+<h2>2. External requirements for this positioning</h2>
+<ul>
+<li><strong>Framing:</strong> state plainly that the tool is informational, not a law firm, not affiliated with government/ombudsman/regulator; distinguish legal information from legal advice; define scope and when it cannot help.</li>
+<li><strong>Evidence:</strong> preserve originals; maintain chain-of-custody metadata and hashes; redact only release copies; support user-controlled retention/deletion/export.</li>
+<li><strong>Privacy:</strong> data minimization, purpose limitation, lawful basis/consent, transparency, security, privacy by design, right to erasure, layered plain-language notice.</li>
+<li><strong>Accessibility:</strong> WCAG 2.2 AA; multiple channels; plain language; support for representatives/assistive needs.</li>
+<li><strong>User control:</strong> explicit consent; review/edit before external use; self-service export/correction/deletion; user-driven escalation.</li>
+<li><strong>Escalation:</strong> tiered ladder with prerequisites, timelines, documented company attempt, preserved complaint trail, deadlines that close routes.</li>
+<li><strong>Disclaimers:</strong> visible, plain-language, aligned with actual practices; “not legal advice,” “informational purposes only,” consult a professional.</li>
+<li><strong>Must not:</strong> no complaint-filing service framing, no attorney-client relationship, no outcome promises, no auto-submission without review/consent, no fabricated or altered evidence.</li>
+</ul>
+
+<h2>3. Prioritized requirements</h2>
+<h3>Must-have</h3>
+<ul>
+<li>M1 Restore release baseline: build, lint, tests pass; fix cacheComponents conflict, native link, test alias, stale fixtures.</li>
+<li>M2 Sign-aware numeric grounding.</li>
+<li>M3 Resolve letter citations from actual letter text.</li>
+<li>M4 Enforce applicability ceiling in code and docs.</li>
+<li>M5 Minimize PII in search queries.</li>
+<li>M6 Retain/display only HTTPS sources.</li>
+<li>M7 Make company-response and exhibit handling consistent.</li>
+<li>M8 Make Rebuttal Lab limits and grounding consistent.</li>
+<li>M9 Validate saved-case input and identifiers.</li>
+<li>M10 Keep remedy as request, not entitlement.</li>
+<li>M11 Correct documentation drift.</li>
+</ul>
+<h3>Should-have</h3>
+<ul>
+<li>S1 Applicability review step or reviewed pack metadata.</li>
+<li>S2 Unicode normalization in exact-passage matching.</li>
+<li>S3 Fix false amount conflicts.</li>
+<li>S4 Robust date parsing for conflict checks.</li>
+<li>S5 Harden production route access.</li>
+<li>S6 Bound concurrency honestly.</li>
+<li>S7 Defensive result rendering.</li>
+<li>S8 Improve account form reliability.</li>
+<li>S9 Make shell and state reset honest.</li>
+<li>S10 Saved-case pagination and search.</li>
+<li>S11 Validate pack registration and review metadata.</li>
+<li>S12 Safe observability.</li>
+<li>S13 Accessibility and mobile export.</li>
+<li>S14 Review source snippet truncation.</li>
+<li>S15 Preserve non-PII specificity in query planning.</li>
+<li>S16 Keep fictional walkthrough clearly labeled.</li>
+</ul>
+<h3>Could-have</h3>
+<ul>
+<li>C1 Reviewed compensation formulas.</li>
+<li>C2 Multilingual letter templates.</li>
+<li>C3 Packs/jurisdictions with review workflow.</li>
+<li>C4 Channel-specific filing assistance (checklists/reminders only, no auto-submission).</li>
+<li>C5 Historical policy comparison.</li>
+<li>C6 Image/OCR intake after live endpoint test.</li>
+<li>C7 Release evidence (20+ runs, jurisdiction/compensation reviews).</li>
+<li>C8 Accessibility enhancements.</li>
+<li>C9 Observability dashboard.</li>
+</ul>
+<h3>Out-of-scope</h3>
+<ul>
+<li>O1 Automatic sending/filing/contacting.</li>
+<li>O2 External complaint status tracking or polling.</li>
+<li>O3 Legal advice, eligibility determinations, outcome probabilities.</li>
+<li>O4 Compensation entitlement claims without reviewed formulas.</li>
+<li>O5 Marking unreviewed applicability as supported.</li>
+<li>O6 OCR/PDF or accounts expansion beyond current saved-case scope.</li>
+<li>O7 Community complaint-pattern discovery.</li>
+</ul>
+
+<h2>4. Bottom line</h2>
+<p>The app is already close to the desired positioning. The critical work is to fix the baseline (build/lint/tests), close evidence-grounding holes, make applicability and remedy language unambiguous, and align docs with the implemented saved-case features. Everything that would turn it into a filing service—auto-submission, external tracking, legal advice—should remain out of scope.</p>
+</div>

@@ -1,0 +1,113 @@
+<title>Complaint channel research</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root { --bg:#f4f1ea; --paper:#fbf9f4; --ink:#1c1b18; --muted:#5a564d; --line:#d8d2c5; --accent:#8a3b12; --warn:#a36a00; --danger:#9b2c2c; --ok:#2f6b3a; color-scheme:light; }
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141311;--paper:#1c1a17;--ink:#ece6d9;--muted:#a9a293;--line:#3a362f;--accent:#d98a5a;--warn:#d9a34a;--danger:#e07a7a;--ok:#7fb38a;color-scheme:dark;}}
+:root[data-theme="dark"]{--bg:#141311;--paper:#1c1a17;--ink:#ece6d9;--muted:#a9a293;--line:#3a362f;--accent:#d98a5a;--warn:#d9a34a;--danger:#e07a7a;--ok:#7fb38a;color-scheme:dark;}
+*{box-sizing:border-box} html,body{margin:0;padding:0} body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px}
+.wrap{max-width:1180px;margin:0 auto} h1{font-size:30px;margin:0 0 8px;text-wrap:balance} h2{font-size:22px;margin:28px 0 8px;text-wrap:balance} p{margin:0 0 12px} .eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:11px;color:var(--muted);margin:0 0 6px} .lede{color:var(--muted);max-width:72ch}
+table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0} th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top} th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid var(--line)} .tag.no{color:var(--danger);border-color:var(--danger)} .tag.assist{color:var(--warn);border-color:var(--warn)} .tag.yes{color:var(--ok);border-color:var(--ok)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:16px;margin:12px 0} .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+ul{margin:6px 0 12px 20px} li{margin:4px 0} code{font-family:ui-monospace,monospace;font-size:13px}
+</style>
+<div class="wrap">
+<p class="eyebrow">Browser-harness research</p>
+<h1>Complaint channels, posting types, and tracking</h1>
+<p class="lede">Research on public consumer complaint channels across India, the EU, and the US for the app’s three dispute packs. Focus: what kinds of complaint posting exist, where complaints can be posted, how status is tracked, and how much the app can automate versus assist.</p>
+
+<h2>1. Types of complaint posting that exist</h2>
+<table>
+<thead><tr><th>Channel type</th><th>Examples</th><th>Tracking support</th><th>User effort</th><th>App role</th></tr></thead>
+<tbody>
+<tr><td>Company direct channels</td><td>Support portal, email, chat, social media, complaint forms</td><td>Company ticket/reference number; varies</td><td>Low–Medium</td><td><span class="tag assist">Assist only</span></td></tr>
+<tr><td>Payment dispute / chargeback</td><td>Bank, card network, payment provider dispute</td><td>Bank case number; evidence deadlines</td><td>Medium</td><td><span class="tag assist">Assist only</span></td></tr>
+<tr><td>Government grievance portals</td><td>AirSewa (India), NCH (India), US DOT, CMS No Surprises Help Desk, FCC Consumer Complaint Center, TRAI TCCMS</td><td>Government docket/ticket number; portal status</td><td>Medium</td><td><span class="tag assist">Assist only</span></td></tr>
+<tr><td>Regulators / sector authorities</td><td>DGCA, IRDAI/Bima Bharosa, state insurance commissioners, EU national regulators, NEBs</td><td>Case reference; varies by authority</td><td>Medium–High</td><td><span class="tag assist">Assist only</span></td></tr>
+<tr><td>Consumer courts / tribunals</td><td>e-Daakhil/Confonet (India), EU ODR, small claims courts</td><td>Court docket; daily status/judgments</td><td>High</td><td><span class="tag assist">Assist only</span></td></tr>
+<tr><td>Ombudsman / ADR / ECC-Net</td><td>European Consumer Centres, national ombudsmen, ADR bodies</td><td>Case handling reference</td><td>Medium–High</td><td><span class="tag assist">Assist only</span></td></tr>
+<tr><td>Complaint bureaus</td><td>Better Business Bureau (US), National Consumer Helpline (India)</td><td>BBB tracker / NCH docket</td><td>Low–Medium</td><td><span class="tag assist">Assist only</span></td></tr>
+<tr><td>Third-party dispute tools</td><td>Resolver, DoNotPay, Confonet</td><td>Tool-specific status tracking</td><td>Low–Medium</td><td><span class="tag assist">Reference / assist</span></td></tr>
+<tr><td>Fraud / systemic reporting</td><td>FTC ReportFraud (US)</td><td>Aggregate only; no individual resolution</td><td>Low</td><td><span class="tag assist">Assist only</span></td></tr>
+</tbody>
+</table>
+
+<h2>2. Channel inventory by dispute type</h2>
+<div class="grid">
+<div class="card"><h3>Flight delays</h3><ul>
+<li>Airline customer relations.</li>
+<li>AirSewa (India) grievance ID.</li>
+<li>DGCA (India) aviation complaints.</li>
+<li>US DOT Aviation Consumer Protection case number.</li>
+<li>EU NEBs / EC 261 process with country-specific case reference.</li>
+</ul></div>
+<div class="card"><h3>Subscriptions</h3><ul>
+<li>Company support/cancellation and refund request.</li>
+<li>Bank/payment-provider chargeback.</li>
+<li>NCH (India) docket.</li>
+<li>e-Daakhil (India) consumer commission dashboard.</li>
+<li>ECC-Net / EU ODR (EU).</li>
+<li>FTC ReportFraud (US, systemic only).</li>
+<li>Better Business Bureau (US).</li>
+</ul></div>
+<div class="card"><h3>Surprise bills / fees</h3><ul>
+<li>Company billing team.</li>
+<li>IRDAI Bima Bharosa/IGMS token (insurance, India).</li>
+<li>State Clinical Establishment Councils (healthcare, India).</li>
+<li>CMS No Surprises Help Desk / federal dispute portal (US).</li>
+<li>State insurance commissioners (US).</li>
+<li>EU national health authorities/ombudsmen.</li>
+<li>Sector regulators/ombudsmen.</li>
+</ul></div>
+<div class="card"><h3>Telecom bills / services</h3><ul>
+<li>TRAI TCCMS monitoring/escalation.</li>
+<li>NCH (India).</li>
+<li>EU national telecom regulators.</li>
+<li>FCC Consumer Complaint Center (US).</li>
+</ul></div>
+</div>
+
+<h2>3. What the app can actually do</h2>
+<p>The app currently performs the analysis and drafting work, but it does not post complaints or monitor external complaint status. It can monitor its own analysis progress and saved-case records only.</p>
+<table>
+<thead><tr><th>Capability</th><th>App</th><th>User</th></tr></thead>
+<tbody>
+<tr><td>Intake validation and document handling</td><td><span class="tag yes">Yes</span></td><td><span class="tag yes">Yes</span> (gather/transcribe)</td></tr>
+<tr><td>Fact extraction and research</td><td><span class="tag yes">Yes</span></td><td><span class="tag assist">Review</span></td></tr>
+<tr><td>Evidence verification and conflict reporting</td><td><span class="tag yes">Yes</span></td><td><span class="tag assist">Review/supply exhibits</span></td></tr>
+<tr><td>Complaint letter generation</td><td><span class="tag yes">Yes</span></td><td><span class="tag assist">Edit/finalize</span></td></tr>
+<tr><td>Escalation suggestions</td><td><span class="tag yes">Yes</span> (unreviewed)</td><td><span class="tag assist">Verify contacts/deadlines</span></td></tr>
+<tr><td>Send or file complaint</td><td><span class="tag no">No</span></td><td><span class="tag yes">Yes</span></td></tr>
+<tr><td>External status tracking</td><td><span class="tag no">No</span></td><td><span class="tag yes">Yes</span></td></tr>
+<tr><td>Legal/eligibility decisions</td><td><span class="tag no">No</span></td><td><span class="tag yes">Yes</span></td></tr>
+</tbody>
+</table>
+
+<h2>4. How many types the app can do and monitor</h2>
+<ul>
+<li><strong>Complaint packs supported:</strong> 3 (flight delay, subscription cancellation, surprise bill/fee).</li>
+<li><strong>Jurisdictions:</strong> 3 (IN, EU, US).</li>
+<li><strong>Escalation entries:</strong> 4 per pack per jurisdiction (unreviewed pack strings).</li>
+<li><strong>Direct automated complaint postings:</strong> 0. All channels require user identity, login, OTP/CAPTCHA, document upload, or jurisdiction-specific steps; no reliable public submission APIs were found.</li>
+<li><strong>External status monitoring:</strong> 0. The app monitors its own analysis progress and saved-case records only; it does not poll company/regulator/court systems.</li>
+<li><strong>Assisted channels:</strong> All listed channels can be assisted through drafting, checklists, evidence packaging, deadline reminders, and status polling where the user supplies credentials/case numbers.</li>
+</ul>
+
+<h2>5. Workload split</h2>
+<table>
+<thead><tr><th>Stage</th><th>App does</th><th>User does</th></tr></thead>
+<tbody>
+<tr><td>Intake</td><td>Validates case type, jurisdiction, limits, optional fields; keeps text on errors</td><td>Gathers/transcribes documents; chooses case type/jurisdiction; enters company reply; supplies exhibits</td></tr>
+<tr><td>Extraction</td><td>Extracts stated facts, grounds values, labels missing as unknown</td><td>Reviews facts against original; supplies missing facts</td></tr>
+<tr><td>Research</td><td>Plans bounded queries; searches; deduplicates; reports warnings</td><td>Reviews sources and coverage gaps</td></tr>
+<tr><td>Evidence</td><td>Verifies passages; flags conflicts/questions; Rebuttal Lab hypotheses</td><td>Supplies exhibits; judges relevance; decides next steps</td></tr>
+<tr><td>Letter</td><td>Builds deterministic cited English letter</td><td>Edits, fills placeholders, downloads/prints, sends externally</td></tr>
+<tr><td>Escalation</td><td>Returns unreviewed pack suggestions</td><td>Verifies bodies, contacts, deadlines; files externally</td></tr>
+<tr><td>Tracking/follow-up</td><td>Optional save/reanalysis; before/after comparison</td><td>Tracks responses, deadlines, case status, updates evidence</td></tr>
+<tr><td>Legal/eligibility</td><td>Disclaims advice; applicability unknown; no entitlement calculation</td><td>Decides strategy, entitlement, and whether to seek advice</td></tr>
+</tbody>
+</table>
+
+<h2>6. Recommended positioning</h2>
+<p>Position the app as an <strong>evidence-first dispute assistant</strong>, not a complaint filing service. It can prepare a strong, cited, editable complaint and help the user choose the right channel, but the user must send/file and track externally. Future features could add channel-specific filing checklists, status polling with user-supplied case numbers, and reminders, but full automated submission should remain out of scope unless official APIs and consent flows exist.</p>
+</div>

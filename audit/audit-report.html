@@ -1,0 +1,214 @@
+<title>Fine Print Fighter audit</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root {
+  --bg: #f4f1ea;
+  --paper: #fbf9f4;
+  --ink: #1c1b18;
+  --muted: #5a564d;
+  --line: #d8d2c5;
+  --accent: #8a3b12;
+  --accent-soft: #f0dfcf;
+  --warn: #a36a00;
+  --danger: #9b2c2c;
+  --ok: #2f6b3a;
+  --code: #2a2a2a;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141311;
+    --paper: #1c1a17;
+    --ink: #ece6d9;
+    --muted: #a9a293;
+    --line: #3a362f;
+    --accent: #d98a5a;
+    --accent-soft: #3a2a20;
+    --warn: #d9a34a;
+    --danger: #e07a7a;
+    --ok: #7fb38a;
+    --code: #d8d2c5;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141311;
+  --paper: #1c1a17;
+  --ink: #ece6d9;
+  --muted: #a9a293;
+  --line: #3a362f;
+  --accent: #d98a5a;
+  --accent-soft: #3a2a20;
+  --warn: #d9a34a;
+  --danger: #e07a7a;
+  --ok: #7fb38a;
+  --code: #d8d2c5;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; }
+h1 { font-size: 34px; line-height: 1.1; margin: 0 0 8px; letter-spacing: -0.02em; text-wrap: balance; }
+h2 { font-size: 22px; margin: 32px 0 10px; letter-spacing: -0.01em; text-wrap: balance; }
+h3 { font-size: 16px; margin: 18px 0 6px; }
+p { margin: 0 0 12px; }
+.eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 11px; color: var(--muted); margin: 0 0 6px; }
+.lede { color: var(--muted); max-width: 72ch; }
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 12px 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid var(--line); }
+.tag.high { color: var(--danger); border-color: var(--danger); }
+.tag.medium { color: var(--warn); border-color: var(--warn); }
+.tag.low { color: var(--muted); }
+.tag.ok { color: var(--ok); border-color: var(--ok); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; color: var(--code); }
+ul { margin: 6px 0 12px 20px; }
+li { margin: 4px 0; }
+hr { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
+.meta { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Read-only research audit</p>
+  <h1>Fine Print Fighter — use cases, holes, and next work</h1>
+  <p class="lede">Audit of the current working tree on branch <code>main</code>. Scope: product surface, backend/API, AI pipeline and evidence handling, frontend/UX, tests, and documentation. No files were changed.</p>
+  <div class="meta">
+    <span>Branch: main</span>
+    <span>Tests observed: 45 cases, 4 failing</span>
+    <span>Typecheck: passing</span>
+    <span>Lint: 1 error, 4 warnings</span>
+    <span>Build: broken (cacheComponents + dynamic config)</span>
+  </div>
+
+  <h2>1. Product and use cases</h2>
+  <div class="grid">
+    <div class="card"><h3>Consumer dispute intake</h3><p>Select one of three packs (flight delay/cancellation, subscription cancellation, surprise bill/fee) and one of three jurisdictions (IN, EU, US). Paste or upload document text plus the company’s actual reply. Optional name, desired outcome, language, reply period.</p></div>
+    <div class="card"><h3>Grounded analysis</h3><p>Extracts document facts, plans bounded research queries, searches Tavily, evaluates findings for and against the consumer, verifies exact passages, scores evidence coverage, and produces an editable cited letter.</p></div>
+    <div class="card"><h3>Rebuttal Lab</h3><p>Investigates the company’s possible defenses, identifies missing exhibits, supports up to three separately identified exhibits, and re-runs analysis when evidence is supplied. Shows before/after comparison.</p></div>
+    <div class="card"><h3>Evidence walkthrough</h3><p>Offline fictional sample built on the same exact-passage matcher, with remove/irrelevant/restore/edit states. No model or research calls.</p></div>
+    <div class="card"><h3>Letter export</h3><p>Controlled editor; download current text plus sources; print letter and sources only. No automatic sending or filing.</p></div>
+    <div class="card"><h3>Saved private cases</h3><p>Supabase-backed accounts, RLS-scoped case storage, reanalysis, export, and account deletion. Guest analysis remains transient.</p></div>
+    <div class="card"><h3>Content and coverage pages</h3><p>Company directory (Air India, Netflix), practical guides, complaint category pages, jurisdiction and coverage notes.</p></div>
+    <div class="card"><h3>Escalation guidance</h3><p>Jurisdiction-specific escalation lists, explicitly labeled unreviewed, with no verified contacts or deadlines.</p></div>
+  </div>
+
+  <h2>2. Strengths worth preserving</h2>
+  <ul>
+    <li><strong>Evidence discipline:</strong> stable source IDs, exact-passage verification, application-checked references, opposing findings preserved, applicability kept explicit.</li>
+    <li><strong>Safety:</strong> provider errors do not leak upstream bodies; safe public error messages; no client-supplied verification flags; search queries minimized through <code>safeSearchEntity</code>.</li>
+    <li><strong>Bounded AI behavior:</strong> initial attempt plus one repair, no recursive repair, 25s model timeout, 15s research timeout, 120s overall deadline.</li>
+    <li><strong>Rate limiting:</strong> shared Upstash rolling IP/global budget, HMACed IP identifiers, process-local concurrency cap, development budget.</li>
+    <li><strong>Letter integrity:</strong> deterministic English template, quoted source passages, application-allocated citation markers, placeholders for missing details.</li>
+    <li><strong>UX trust signals:</strong> fictional-sample disclosure, model attribution, evidence coverage status, limitations section, no outcome prediction.</li>
+  </ul>
+
+  <h2>3. High-severity holes</h2>
+  <table>
+    <thead><tr><th>Area</th><th>Finding</th><th>Reference</th></tr></thead>
+    <tbody>
+      <tr><td>Build</td><td><code>cacheComponents</code> conflicts with exported <code>dynamic</code>/<code>runtime</code> segment config; build fails with 3 Turbopack errors.</td><td><code>next.config.ts</code>, <code>src/app/cases/*</code>, <code>src/app/api/cases/*</code></td></tr>
+      <tr><td>Lint</td><td>Native <code>&lt;a href="/complaints"&gt;</code> instead of <code>next/link</code> breaks <code>npm run lint</code>.</td><td><code>src/app/complaints/new/page.tsx:6</code></td></tr>
+      <tr><td>Tests</td><td>Test tsconfig lacks <code>@/</code> path alias, so <code>npm test</code> fails before running tests.</td><td><code>tests/tsconfig.json</code>, <code>src/lib/catalog.ts</code>, <code>src/lib/saved-cases.ts</code></td></tr>
+      <tr><td>Tests</td><td>Stale request fixture lacks required <code>companyResponse</code>.</td><td><code>tests/request.test.ts:5,19-20</code></td></tr>
+      <tr><td>Tests</td><td>Stale pipeline mock does not account for the new Rebuttal Lab model call.</td><td><code>tests/pipeline.test.ts:57-76</code>, <code>src/lib/pipeline.ts:68</code></td></tr>
+      <tr><td>Evidence</td><td>Numeric grounding accepts <code>1200</code> when the document only contains <code>-1200</code>; sign is not checked.</td><td><code>src/lib/llm.ts</code> <code>excerptFor</code> for numbers</td></tr>
+      <tr><td>Letters</td><td>Citation allocation uses synthetic markers instead of scanning the actual letter, so citations can be emitted without being tied to the letter and unresolved markers are not detected.</td><td><code>src/lib/llm.ts:179-180</code>, <code>src/lib/evidence.ts:resolveLetterCitations</code></td></tr>
+      <tr><td>Saved cases</td><td><code>validateSaveCase</code> only checks <code>analysis</code> is truthy; route uses <code>request.json()</code> with no 256 KiB cap. Oversized or malformed analyses can be stored.</td><td><code>src/lib/saved-cases.ts:22-34</code>, <code>src/app/api/cases/route.ts:26-33</code></td></tr>
+      <tr><td>Saved cases</td><td><code>caseId</code> is not UUID-validated in GET/PATCH/DELETE/export, causing 500s and header-injection risk in export filename.</td><td><code>src/app/api/cases/[caseId]/route.ts:18,34,45</code>, <code>export/route.ts:9</code></td></tr>
+      <tr><td>Saved cases</td><td>PATCH stringifies <code>analysis</code> without verifying it is a non-array object; stringify can throw and DB rejects non-objects with 500.</td><td><code>src/app/api/cases/[caseId]/route.ts:31-33</code></td></tr>
+      <tr><td>Docs</td><td>README and implementation docs still claim no database/saved cases, while Supabase case storage is implemented.</td><td><code>README.md:49,89-91</code>, <code>docs/implementation.md:30</code></td></tr>
+      <tr><td>Docs</td><td>Deployment env table omits Supabase variables required by saved-case and account routes.</td><td><code>docs/deployment.md</code>, <code>docs/supabase-setup.md</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. Medium-severity holes</h2>
+  <table>
+    <thead><tr><th>Area</th><th>Finding</th><th>Reference</th></tr></thead>
+    <tbody>
+      <tr><td>Evidence</td><td><code>applicability</code> is always <code>'unknown'</code> and never upgraded, so scores can never be <code>strong</code> or <code>sufficient</code>. Either add an applicability review step or document the intentional ceiling.</td><td><code>src/lib/evidence.ts:38-53</code></td></tr>
+      <tr><td>Privacy</td><td><code>safeSearchEntity</code> only blocks 7+ digits and a narrow street pattern, allowing shorter account/reference numbers and other PII into search queries.</td><td><code>src/lib/query.ts:3-16</code></td></tr>
+      <tr><td>Research</td><td>Source snippets are truncated to 6,000 characters, which can break exact passage matching for longer quotes.</td><td><code>src/lib/tavily.ts:14</code></td></tr>
+      <tr><td>Evidence</td><td><code>localAmountConflicts</code> adds a token even when currency is empty/invalid, creating false conflicts.</td><td><code>src/lib/llm.ts:87-91</code></td></tr>
+      <tr><td>Evidence</td><td><code>localDateConflicts</code> parses dates with <code>Date.parse</code>, misparsing common non-US formats.</td><td><code>src/lib/llm.ts:108-125</code></td></tr>
+      <tr><td>Security</td><td><code>safeSourceURL</code> accepts <code>http:</code>; enforce <code>https:</code> for retained/displayed sources.</td><td><code>src/lib/evidence.ts:3-9</code>, <code>src/lib/tavily.ts:20</code></td></tr>
+      <tr><td>Security</td><td>Stage routes rely on <code>NODE_ENV</code>/env flags; accidental development mode in production exposes unbudgeted LLM/research routes.</td><td><code>src/lib/stage-api.ts:18</code></td></tr>
+      <tr><td>Security</td><td>Trusted client IP comes from a configurable header; outside Vercel or with a misconfigured header, clients can spoof IPs and bypass per-IP limits.</td><td><code>src/lib/shared-budget.ts:22-36</code></td></tr>
+      <tr><td>Security</td><td>No Origin/CSRF validation beyond content-type preflight on state-changing routes.</td><td><code>src/app/api/account/route.ts</code>, case mutation routes</td></tr>
+      <tr><td>Concurrency</td><td>Concurrency cap is per server instance and can be bypassed across serverless instances.</td><td><code>src/app/api/extract/route.ts:16-17</code></td></tr>
+      <tr><td>UX</td><td>No guards around backend arrays in <code>CaseResult</code>; a malformed/partial payload can crash the result view.</td><td><code>src/components/CaseResult.tsx:72,111,127,138</code></td></tr>
+      <tr><td>UX</td><td><code>deleteAccount</code> has no try/catch or busy state; failed/aborted fetch becomes unhandled rejection.</td><td><code>src/components/AccountForms.tsx:76-87</code></td></tr>
+      <tr><td>UX</td><td><code>window.location.assign()</code> used for internal routes, causing full reloads and lint warnings.</td><td><code>AccountForms.tsx:32,74,86</code>, <code>FighterApp.tsx:246</code></td></tr>
+      <tr><td>UX</td><td>Header is not session-aware; always renders “Sign in”.</td><td><code>src/components/SiteShell.tsx:12</code></td></tr>
+      <tr><td>UX</td><td>Stale <code>previousResult</code>/<code>additionalDocuments</code> can persist when starting a fresh analysis without reset.</td><td><code>src/components/FighterApp.tsx:194</code></td></tr>
+      <tr><td>UX</td><td>No React error boundary around <code>FighterApp</code>/<code>CaseResult</code>.</td><td>app/component tree</td></tr>
+      <tr><td>API</td><td>Saved-case list has no pagination/limit.</td><td><code>src/app/api/cases/route.ts:16</code></td></tr>
+      <tr><td>Data</td><td><code>packId</code> is regex-validated but not checked against registered packs.</td><td><code>src/lib/saved-cases.ts:24</code></td></tr>
+      <tr><td>Rebuttal</td><td>Tool-call limits are inconsistent (3 turns, 6 calls, break at 4 actions); align and ensure <code>finish_investigation</code> is always processed.</td><td><code>src/lib/rebuttal.ts:120-135</code></td></tr>
+      <tr><td>Rebuttal</td><td>Objections with no evidence requests receive an empty <code>evidenceNeeded</code> array.</td><td><code>src/lib/rebuttal.ts:180-190</code></td></tr>
+      <tr><td>Pipeline</td><td><code>companyResponse</code> is optional in the pipeline but required by request parsing, making the Rebuttal Lab mandatory and inconsistent with the optional-context model.</td><td><code>src/lib/pipeline.ts</code>, <code>src/lib/request.ts:34-37</code></td></tr>
+      <tr><td>Query</td><td><code>planQueries</code> hardcodes <code>flightNumber</code> and <code>date</code> to empty, discarding useful non-PII specificity.</td><td><code>src/lib/llm.ts:59</code></td></tr>
+      <tr><td>Matching</td><td>Normalization handles only whitespace; Unicode variants can fail exact matching.</td><td><code>src/lib/exact-passage.ts:4</code></td></tr>
+      <tr><td>UX</td><td>Recheck/exhibit removal flows can leave the evidence form open while disabled.</td><td><code>src/components/CaseResult.tsx:104,113</code></td></tr>
+      <tr><td>Accessibility</td><td>Source links use <code>rel="noreferrer"</code> only; add <code>noopener</code>.</td><td><code>src/app/companies/[slug]/page.tsx:16</code>, <code>src/app/guides/[slug]/page.tsx:23</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. Low-severity holes and polish</h2>
+  <ul>
+    <li>Redis ZSET member is a random UUID; collision is unlikely but could undercount. <code>src/lib/shared-budget.ts:42</code>.</li>
+    <li><code>NEBIUS_BASE_URL</code> is not host-validated; a compromised env could redirect server-side fetches. <code>src/lib/provider.ts:32,51</code>.</li>
+    <li>Analysis metadata logged to stdout should remain limited to safe counts/durations. <code>src/app/api/extract/route.ts:38,57</code>.</li>
+    <li><code>localAmountConflicts</code> uses the first excerpt for every amount in an array fact. <code>src/lib/llm.ts:80-84</code>.</li>
+    <li>Saved-case validation lacks a registered-pack check and total size cap. <code>src/lib/saved-cases.ts</code>.</li>
+    <li>Profile/account UI has no loading state and can flash signed-out. <code>src/components/AccountForms.tsx</code>.</li>
+    <li>Result container is focusable but lacks a labeled landmark. <code>src/components/FighterApp.tsx:251</code>.</li>
+    <li>Export filename should be sanitized/encoded. <code>src/app/api/cases/[caseId]/export/route.ts</code>.</li>
+  </ul>
+
+  <h2>6. Test and documentation debt</h2>
+  <ul>
+    <li><strong>Coverage gaps:</strong> no tests for <code>catalog.ts</code>, <code>saved-cases.ts</code>, <code>shared-budget.ts</code>, <code>rebuttal.ts</code>, Supabase helpers, saved-case/account routes, stage-api plan/evaluate/draft branches, <code>llmToolTurn</code>, NDJSON/budget/active-analysis behavior, and component flows.</li>
+    <li><strong>Docs drift:</strong> README says no application database/saved case history; implementation says no database; deployment omits Supabase env vars; privacy wording overstates retention for saved cases.</li>
+    <li><strong>Counts:</strong> implementation docs say 45 tests; suite now has 49 test cases.</li>
+    <li><strong>Spec scope:</strong> spec describes storage as transient/no database and accounts/persistence as outside MVP; update to reflect saved cases or mark as documented post-MVP extension.</li>
+  </ul>
+
+  <h2>7. Suggested feature additions</h2>
+  <div class="grid">
+    <div class="card"><h3>Trustworthy pipeline fixes</h3><p>Make numeric grounding sign-aware; fix citation allocation; add applicability review or document the intentional ceiling; improve PII filtering; validate HTTPS sources.</p></div>
+    <div class="card"><h3>Compensation engine</h3><p>Implement reviewed, testable monetary formulas with currency, source ID, inputs, assumptions, and working. Keep disputed charge separate from entitlement.</p></div>
+    <div class="card"><h3>Multilingual letters</h3><p>Add and evaluate additional letter language templates; current template is English only.</p></div>
+    <div class="card"><h3>More packs and jurisdictions</h3><p>Add pack version review dates, preferred-domain ranking, typed extraction fields, sector/route applicability facts, and additional jurisdiction selectors.</p></div>
+    <div class="card"><h3>Saved-case UX</h3><p>Pagination, search/filter, reanalysis progress, export, profile editing, and clearer saved-case privacy messaging.</p></div>
+    <div class="card"><h3>Observability</h3><p>Stage durations, provider status, counts, request IDs, safe logging; deployment deadline checks; measured latency and failure reporting.</p></div>
+    <div class="card"><h3>Accessibility</h3><p>Loading states, session-aware header, error boundaries, keyboard focus, mobile print/export, and reduced-motion support.</p></div>
+    <div class="card"><h3>Release gates</h3><p>Live provider verification, 20+ representative runs, jurisdiction review, compensation formulas, retention review, and global cap from measured cost.</p></div>
+  </div>
+
+  <h2>8. Recommended immediate sequence</h2>
+  <ol>
+    <li>Fix build: resolve <code>cacheComponents</code> vs dynamic segment config and the lint error.</li>
+    <li>Fix tests: add path alias, update stale request/pipeline fixtures, add rebuttal mock.</li>
+    <li>Fix evidence bugs: sign-aware numeric grounding and citation allocation.</li>
+    <li>Harden saved cases: UUID validation, body size caps, analysis validation, registered pack check.</li>
+    <li>Update docs: README, implementation, deployment, spec to reflect saved cases and Supabase.</li>
+    <li>Run <code>npm run verify</code> until green, then address medium-severity security and UX items.</li>
+  </ol>
+
+  <hr>
+  <p class="eyebrow">Conclusion</p>
+  <p>The application has a strong evidence-first architecture and substantial safety work. The main release blockers are build/lint/test drift, a few concrete evidence-grounding bugs, and documentation that no longer matches the implemented saved-case/account features. Addressing the high-severity items first should restore a green verification pipeline without changing product scope.</p>
+</div>

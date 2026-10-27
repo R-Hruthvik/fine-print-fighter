@@ -1,0 +1,99 @@
+<title>User experience journey audit</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root { --bg:#f4f1ea; --paper:#fbf9f4; --ink:#1c1b18; --muted:#5a564d; --line:#d8d2c5; --accent:#8a3b12; --warn:#a36a00; --danger:#9b2c2c; --ok:#2f6b3a; color-scheme:light; }
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141311;--paper:#1c1a17;--ink:#ece6d9;--muted:#a9a293;--line:#3a362f;--accent:#d98a5a;--warn:#d9a34a;--danger:#e07a7a;--ok:#7fb38a;color-scheme:dark;}}
+:root[data-theme="dark"]{--bg:#141311;--paper:#1c1a17;--ink:#ece6d9;--muted:#a9a293;--line:#3a362f;--accent:#d98a5a;--warn:#d9a34a;--danger:#e07a7a;--ok:#7fb38a;color-scheme:dark;}
+*{box-sizing:border-box} html,body{margin:0;padding:0} body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px}
+.wrap{max-width:1180px;margin:0 auto} h1{font-size:30px;margin:0 0 8px;text-wrap:balance} h2{font-size:22px;margin:28px 0 8px;text-wrap:balance} p{margin:0 0 12px} .eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:11px;color:var(--muted);margin:0 0 6px} .lede{color:var(--muted);max-width:72ch}
+table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0} th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top} th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid var(--line)} .tag.no{color:var(--danger);border-color:var(--danger)} .tag.assist{color:var(--warn);border-color:var(--warn)} .tag.yes{color:var(--ok);border-color:var(--ok)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:16px;margin:12px 0} .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+ul{margin:6px 0 12px 20px} li{margin:4px 0} code{font-family:ui-monospace,monospace;font-size:13px}
+</style>
+<div class="wrap">
+<p class="eyebrow">User-end experience audit</p>
+<h1>From opening the app to using the result</h1>
+<p class="lede">Read-only analysis of the real user journey, provider/configuration friction, and how clearly the app answers user questions.</p>
+
+<h2>1. Journey overview</h2>
+<ol>
+<li><strong>Home</strong> (`src/app/page.tsx`): long, content-heavy; primary CTA “Start a complaint” → `/complaints/new`.</li>
+<li><strong>Intake stage 1</strong> (`FighterApp.tsx:283-292`): company (optional, only 2 suggestions), jurisdiction, complaint type.</li>
+<li><strong>Intake stage 2</strong> (`FighterApp.tsx:293-305`): document text required; upload `.txt/.md` only; company response required.</li>
+<li><strong>Intake stage 3</strong> (`FighterApp.tsx:306-311`): summary, privacy note, “Analyze my case.”</li>
+<li><strong>Analysis</strong> (`submitAnalysis`): streaming progress, 125s client timeout, cancel support.</li>
+<li><strong>Results</strong> (`CaseResult.tsx`): strength, Rebuttal Lab, limitations, facts, findings, remedy, letter, escalation, sources.</li>
+<li><strong>Saved cases</strong> (`/cases`, `/cases/[caseId]`): optional account save, static snapshot, reanalysis.</li>
+</ol>
+
+<h2>2. Highest-risk friction points</h2>
+<table>
+<thead><tr><th>Friction</th><th>Where</th><th>Impact</th></tr></thead>
+<tbody>
+<tr><td>Company response is required, but many users only have a bill/notice/itinerary</td><td><code>FighterApp.tsx:120</code>, home promises “bill, notice, or reply” (`page.tsx:14`)</td><td>Major drop-off in stage 2</td></tr>
+<tr><td>No autosave/draft persistence during intake</td><td><code>FighterApp.tsx</code> form state only</td><td>Refresh loses all data</td></tr>
+<tr><td>Long analysis with progress but no intermediate value</td><td><code>submitAnalysis</code>, <code>AnalysisProgress</code></td><td>Drop-off during 120s run</td></tr>
+<tr><td>Complex results page with jargon</td><td><code>CaseResult.tsx</code> throughout</td><td>Confusion, overclaim risk</td></tr>
+<tr><td>Saved-case reanalysis is opaque and slow</td><td><code>SavedCaseControls.tsx:29-40</code>, <code>reanalyze/route.ts</code></td><td>Drop-off after saving</td></tr>
+<tr><td>Header always shows “Sign in”</td><td><code>SiteShell.tsx:12</code></td><td>Authenticated users not recognized</td></tr>
+<tr><td>Upload limited to `.txt/.md`</td><td><code>workflow.ts:10-17</code></td><td>Users with PDFs/images must transcribe manually</td></tr>
+<tr><td>Exhibit list shows internal IDs</td><td><code>CaseResult.tsx:102</code></td><td>Confusing labels</td></tr>
+</tbody>
+</table>
+
+<h2>3. Provider and configuration friction</h2>
+<table>
+<thead><tr><th>Issue</th><th>What user sees</th><th>Clarity / recovery</th></tr></thead>
+<tbody>
+<tr><td>Missing Nebius key</td><td>503 CONFIGURATION_MISSING: “Analysis is not configured. Set the Nebius API key on the server.”</td><td>Operator-facing wording; discovered only after submit; no preflight or docs link</td></tr>
+<tr><td>Tavily rate limit</td><td>Warning in “Research limitations”; keyed vs keyless message</td><td>Good differentiation, but no retry/backoff; “Add TAVILY_API_KEY” is deployment language</td></tr>
+<tr><td>Rate limits</td><td>429 with message; <code>Retry-After</code> ignored by UI</td><td>No countdown/retry affordance</td></tr>
+<tr><td>Timeouts</td><td>Multiple overlapping messages (504, provider timeout, client timeout)</td><td>Inconsistent guidance; server says “shorter document,” provider says “try again”</td></tr>
+<tr><td>Stage routes disabled</td><td>404 “Not found” with no code/requestId</td><td>Inconsistent error shape; routes unused by UI</td></tr>
+<tr><td>Supabase not configured</td><td>Good fallbacks for guests; partial config yields generic errors</td><td>Inconsistent deletion messages; no startup validation</td></tr>
+</tbody>
+</table>
+
+<h2>4. Clarity of answers</h2>
+<table>
+<thead><tr><th>Area</th><th>What works</th><th>What confuses</th></tr></thead>
+<tbody>
+<tr><td>Evidence strength</td><td>Disclaimer “does not predict a legal outcome”</td><td>“support for your case” can read like merit; <code>strong</code> is effectively unreachable because applicability is hard-coded <code>unknown</code></td></tr>
+<tr><td>Findings</td><td>“Source-backed” vs “Unverified” labels; stance labels</td><td>Same item can appear as unverified finding and under “Unsupported possibilities”; “Source-backed” means traceability only</td></tr>
+<tr><td>Missing evidence</td><td>“What to gather next” list</td><td>Raw schema keys in questions (e.g. departureAirport); generic appended question</td></tr>
+<tr><td>Conflicts</td><td>Safety caveat “neither value is independently verified”</td><td>Amount conflicts stated more definitively than date conflicts</td></tr>
+<tr><td>Remedy</td><td>Disputed amount clearly labeled “not an established entitlement”</td><td>“Sourced estimate” never renders because <code>noAmountFound</code> is always true; users asking “what can I get?” get no amount</td></tr>
+<tr><td>Letter</td><td>Factual request, quoted passages, citation markers, edits not re-analyzed</td><td>Placeholders require manual replacement with no validation before export</td></tr>
+<tr><td>Escalation</td><td>“Verify applicability first” and “Check the official website”</td><td>Every step is unreviewed; section answers possible routes, not verified next steps</td></tr>
+<tr><td>Sources</td><td>Kind, snippet, host, retrieval date, queries, caveat about snippets</td><td>Raw source IDs (<code>s1</code>) vs display IDs (1, 2) may confuse citation mapping</td></tr>
+<tr><td>Jargon</td><td>Some explicit caveats (requested reply period is not a legal deadline)</td><td>“Rebuttal Lab,” “exhibit,” “coverage,” “applicability,” “source-backed,” “unverified,” “pack” lack plain-language definitions</td></tr>
+</tbody>
+</table>
+
+<h2>5. Dead ends and missing guidance</h2>
+<ul>
+<li>No path for users without a company response.</li>
+<li>No PDF/image ingestion; only `.txt/.md`.</li>
+<li>No autosave/draft persistence.</li>
+<li>No PII-redaction prompt in intake.</li>
+<li>Saved-case reanalysis has no progress/cancel and cannot incorporate new exhibits.</li>
+<li>Header lacks authenticated state; “My cases” sends guests to a sign-in wall.</li>
+<li>No retry affordances or countdown after rate limits.</li>
+<li>No configuration preflight/status indicator.</li>
+</ul>
+
+<h2>6. Recommended UX improvements</h2>
+<ul>
+<li>Make company response optional with a “summarize the company’s reply” fallback, or clearly state it is required before analysis.</li>
+<li>Add autosave/draft persistence and a PII-redaction reminder.</li>
+<li>Provide plain-language definitions for key terms (source-backed, applicability, coverage, exhibit).</li>
+<li>Reconcile citation IDs between findings and letter.</li>
+<li>Add retry/backoff and countdown for rate limits and timeouts.</li>
+<li>Add a configuration preflight check and clearer operator guidance.</li>
+<li>Make saved-case reanalysis show progress and allow exhibit updates.</li>
+<li>Make the header session-aware.</li>
+<li>Validate letter placeholders before download/print.</li>
+<li>Reduce jargon in results and provide a “what this means” summary.</li>
+</ul>
+</div>
