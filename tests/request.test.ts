@@ -62,3 +62,9 @@ test("budget permits three analyses per window and expires entries", () => {
   assert.equal(takeBudget(entries, "client", 1003), false);
   assert.equal(takeBudget(entries, "client", 61001), true);
 });
+
+test('first complaints can omit a company reply without weakening reply-review validation', () => {
+  const base={documentText:'I was charged USD 15.99 after requesting cancellation.',packId:'subscription-cancel',country:'US'};
+  assert.equal(parseCaseRequest({...base,intent:'first-complaint'}).companyResponse,'');
+  assert.throws(()=>parseCaseRequest(base));
+});

@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans } from "next/font/google";
+import { fraunces, inter, ibmPlexMono } from "@/components/landing/fonts";
 import { RevealObserver } from "@/components/RevealObserver";
 import "./globals.css";
 
-const interfaceFont = IBM_Plex_Sans({ subsets: ["latin"], variable: "--font-interface" });
 
 export const metadata: Metadata = {
   title: "Fine Print Fighter — make your case",
@@ -11,5 +10,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="en" className={interfaceFont.variable}><body><RevealObserver />{children}</body></html>;
+  return <html lang="en" className={`${fraunces.variable} ${inter.variable} ${ibmPlexMono.variable}`}><body><RevealObserver />{children}</body></html>;
 }

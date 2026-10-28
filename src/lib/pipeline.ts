@@ -1,3 +1,4 @@
+import { buildReviewSummary } from "./review-summary";
 import type { PipelineResult, RulePack, Country, ExtractedFacts, CompensationResult, AnalysisProgressEvent, AnalysisStage, ScopeAnswers, Source } from "./types";
 import { extractFacts, planQueries, evaluateFindings, scoreCase, draftLetter, escalateLadder } from "./llm";
 import { researchWithWarnings } from "./tavily";
@@ -106,7 +107,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const missing = pack.requiredFacts.filter(key => unknown(facts[key]));
   const queries = await stage("plan", () => planQueries(facts, country, pack, signal, companyName, scopeAnswers));
   const research = await stage("research", () => researchWithWarnings(queries, signal, pack.searchPlan.preferredDomains));
-  const rebuttalLab=await stage("rebuttal",()=>investigateObjections({facts,companyResponse,country,sources:research.sources,additionalDocuments,signal,onAction:(action)=>emitProgress({type:"tool",...action})}));
+  const rebuttalLab=await stage("rebuttal",()=>companyResponse.trim() ? investigateObjections({facts,companyResponse,country,sources:research.sources,additionalDocuments,signal,onAction:(action)=>emitProgress({type:"tool",...action})}) : Promise.resolve({objections:[],actions:[],warnings:[],sources:research.sources}));
   const sources=rebuttalLab.sources;
   classifySourceProfiles(sources,pack,country,companyName);
   const evaluation = await stage("evaluate", () => evaluateFindings(facts, sources, pack, signal, {companyResponse,additionalDocuments,primaryDocument:documentText,factEvidence,scopeAnswers}));
@@ -131,6 +132,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   if (pack.lastReviewed === null) warnings.push("This rule pack has not completed a jurisdiction review. Escalation entries are research suggestions; verify each body and deadline on its official website.");
   if (findings.some(f => f.verified && f.applicability !== "supported")) warnings.push("Matching passages establish traceability only. Applicability and claim interpretation still need review.");
   return {
+    reviewSummary: buildReviewSummary({conflicts, unanswered, warnings, sources}),
     facts, factEvidence, scopeAnswers, queries: queries.map(q => q.query), sources, findings, score, compensation, letter,
     letterCitations: citations, escalation, unanswered, unverified, conflicts,
     warnings: [...new Set(warnings)], country,

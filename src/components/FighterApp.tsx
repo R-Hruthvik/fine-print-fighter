@@ -10,10 +10,10 @@ import { COMPANIES } from "@/lib/catalog";
 import { MAX_DOCUMENT_CHARACTERS, MAX_FILE_BYTES, validateDocument, validateTextFile } from "./workflow";
 import { CaseResult } from "./CaseResult";
 import { AnalysisProgress } from "./AnalysisProgress";
-import { EvidenceWalkthrough } from "./EvidenceWalkthrough";
 import { SCOPE_QUESTIONS } from "@/lib/scope-answers";
 
 type FormState = {
+  intent: "first-complaint" | "review-reply";
   companyName: string;
   country: Country;
   caseType: string;
@@ -27,7 +27,7 @@ type FormState = {
 };
 
 const DEFAULT_FORM: FormState = {
-  companyName: "", country: "IN", caseType: "subscription-cancel", scopeAnswers: {}, documentText: "", companyResponse: "", userName: "",
+  intent: "review-reply", companyName: "", country: "IN", caseType: "subscription-cancel", scopeAnswers: {}, documentText: "", companyResponse: "", userName: "",
   desiredOutcome: "", language: "English", replyDeadline: "14 days",
 };
 
@@ -124,13 +124,25 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     setStage(2);
   }
 
-  function reviewCase() {
+  const [preparedFacts, setPreparedFacts] = useState<Record<string, unknown> | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [factsConfirmed, setFactsConfirmed] = useState(false);
+  async function reviewCase() {
     const validation = validateDocument(form.documentText);
     if (validation) { setError(validation); return; }
-    if (!form.companyResponse.trim()) { setError("Add the company’s actual reply or explanation before reviewing."); return; }
+    if (form.intent === "review-reply" && !form.companyResponse.trim()) { setError("Add the company’s actual reply or explanation before reviewing."); return; }
     if (form.companyResponse.length > 12_000) { setError("The company response exceeds 12,000 characters. Shorten it before reviewing."); return; }
     setError(null);
-    setStage(3);
+    setPreparing(true);
+    setFactsConfirmed(false);
+    try {
+      const response = await fetch('/api/prepare', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:form.intent,documentText:form.documentText,companyResponse:form.companyResponse,packId:form.caseType,country:form.country})});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'We could not read the record. Your text is still here.');
+      setPreparedFacts(data.facts);
+      setStage(3);
+    } catch(error) { setError(error instanceof Error ? error.message : 'We could not check the record.'); }
+    finally { setPreparing(false); }
   }
 
   async function upload(file: File) {
@@ -174,7 +186,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     if (requestRef.current) return;
     const validation = validateDocument(form.documentText);
     if (validation) { setError(validation); return; }
-    if (!form.companyResponse.trim()) { setError("Paste the company’s rejection or reply so the Rebuttal Lab can investigate its explanation."); return; }
+    if (form.intent === "review-reply" && !form.companyResponse.trim()) { setError("Paste the company’s rejection or reply so the Rebuttal Lab can investigate its explanation."); return; }
     if (form.companyResponse.length > 12_000) { setError("The company response exceeds 12,000 characters. Shorten it before analyzing."); return; }
     if (form.documentText.length + form.companyResponse.length + documents.reduce((total, document) => total + document.text.length, 0) > 30_000) {
       setError("All case documents together exceed 30,000 characters. Shorten one before analyzing.");
@@ -288,13 +300,13 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
   }
 
   if (result) return <div ref={resultHeading} tabIndex={-1} className="result-focus">
-      <section className="save-case-panel" aria-label="Save case">
+      <details className="save-case-disclosure"><summary>Save this case to your account</summary><section className="save-case-panel" aria-label="Save case">
       <label className="save-case-choice"><input type="checkbox" checked={saveRequested} onChange={(event) => { const checked = event.target.checked; setSaveRequested(checked); setSaveMessage(null); if (!checked) { clearPendingCaseSave(); setPendingSaveReady(false); } }} /> Save the complete case to my private account</label>
       <p>Optional. Includes the documents, analysis, and draft letter. Nothing is saved unless you check this box and choose Save case.</p>
       <button className="secondary-button" type="button" disabled={!saveRequested || saving || exhibitRemovalPending} onClick={() => void saveCase()}>{saving ? "Saving…" : "Save case"}<span aria-hidden="true">→</span></button>
       {exhibitRemovalPending ? <p className="save-case-message">Recheck the remaining evidence before saving so the saved documents and analysis stay aligned.</p> : null}
       {saveMessage ? <p className="save-case-message" role="status">{saveMessage}{pendingSaveReady ? <> <a href="/sign-in?next=%2Fcases%2Fcontinue-save">Sign in</a> or <a href="/sign-up?next=%2Fcases%2Fcontinue-save">create an account</a>.</> : saveMessage.startsWith("Sign in to save this case") ? <> <a href="/sign-in" target="_blank" rel="noopener noreferrer">Sign in in another tab</a> or <a href="/sign-up" target="_blank" rel="noopener noreferrer">create an account in another tab</a>.</> : null}</p> : null}
-    </section>
+    </section></details>
     <CaseResult key={resultRevision} result={result} previousResult={previousResult} additionalDocuments={additionalDocuments} exhibitRemovalPending={exhibitRemovalPending} onRemoveDocument={(id) => { setAdditionalDocuments((previous) => previous.filter((document) => document.id !== id)); setExhibitRemovalPending(true); setNotice("The displayed analysis still includes this exhibit. Recheck to analyze the remaining evidence."); }} isFictionalSample={isFictionalSample} onReset={reset} onRecheck={recheck} rechecking={running} progressEvents={progressEvents} recheckError={error} recheckNotice={notice} onCancelRecheck={() => requestRef.current?.abort()} onLetterChange={setEditedLetter} />
   </div>;
 
@@ -304,14 +316,12 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
         <p className="eyebrow">Make your case</p>
         <h1>Small print.<br />Clear next steps.</h1>
         <p className="intro-copy">A confusing bill. A cancellation that never happened. A flight that didn’t go to plan. Start with the document. We’ll help you find your footing.</p>
-        <a className="walkthrough-jump" href="#walkthrough-heading" onClick={(event) => { event.preventDefault(); window.history.replaceState(null, "", "#walkthrough-heading"); const target = document.getElementById("walkthrough-heading"); target?.focus({ preventScroll: true }); target?.scrollIntoView({ block: "center", behavior: "instant" }); }}>Try the 20-second evidence check <span aria-hidden="true">↓</span></a>
         <ol className="process-list" id="how-it-works" aria-label="How it works">
           <li><span className="process-number">01</span><div><strong>Bring the facts</strong><p>Paste a notice, bill, or company email.</p></div></li>
           <li><span className="process-number">02</span><div><strong>See the evidence</strong><p>Review sources, gaps, and both sides of the dispute.</p></div></li>
           <li><span className="process-number">03</span><div><strong>Choose your next step</strong><p>Edit your letter and review escalation options.</p></div></li>
         </ol>
         <div className="scope-note"><span className="small-label">You stay in control</span><p>Nothing is sent or filed for you. This is an information tool, not legal advice.</p></div>
-        <EvidenceWalkthrough />
       </aside>
 
       <section className="intake-panel" aria-labelledby="intake-heading">
@@ -323,7 +333,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
             {stage === 1 ? <>
             <p className="eyebrow intake-stage-label">Step 1 · Choose your complaint</p>
             <div className="form-grid intake-choice-grid">
-              <label htmlFor="company-name">Company name <span className="required-note">Optional</span><input id="company-name" list="company-options" value={form.companyName} maxLength={200} onChange={(event) => update("companyName", event.target.value)} placeholder="Type any company name" /><datalist id="company-options">{COMPANIES.map((company) => <option key={company.slug} value={company.name} />)}</datalist><span className="field-hint">{hasCompanyCoverage ? `Reviewed sources available for this complaint and jurisdiction (checked ${matchedCompany?.reviewedOn}); source coverage does not establish eligibility.` : matchedCompany ? `${matchedCompany.name} has a directory entry, but not for this complaint and jurisdiction. Company-specific research may be limited.` : "Unlisted companies are welcome; company-specific research may be limited."}</span></label>
+              <label className="full-width" htmlFor="review-intent">What would you like help with?<select id="review-intent" value={form.intent} onChange={event => update('intent',event.target.value as FormState['intent'])}><option value="review-reply">Review a company’s reply</option><option value="first-complaint">Make my first complaint</option></select></label><label htmlFor="company-name">Company name <span className="required-note">Optional</span><input id="company-name" list="company-options" value={form.companyName} maxLength={200} onChange={(event) => update("companyName", event.target.value)} placeholder="Type any company name" /><datalist id="company-options">{COMPANIES.map((company) => <option key={company.slug} value={company.name} />)}</datalist><span className="field-hint">{hasCompanyCoverage ? `Reviewed sources available for this complaint and jurisdiction (checked ${matchedCompany?.reviewedOn}); source coverage does not establish eligibility.` : matchedCompany ? `${matchedCompany.name} has a directory entry, but not for this complaint and jurisdiction. Company-specific research may be limited.` : "Unlisted companies are welcome; company-specific research may be limited."}</span></label>
               <label htmlFor="country">Research jurisdiction<select id="country" value={form.country} onChange={(event) => update("country", event.target.value as Country)}>{COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.label}</option>)}</select></label>
               <label htmlFor="case-type" className="full-width">What’s the issue?<select id="case-type" value={form.caseType} onChange={(event) => setForm((previous) => ({ ...previous, caseType: event.target.value, scopeAnswers: {} }))}>{CASE_TYPES.map((pack) => <option key={pack.id} value={pack.id}>{pack.label}</option>)}</select></label>
             </div>
@@ -341,23 +351,23 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
             <input ref={fileRef} type="file" accept=".txt,.md,text/plain,text/markdown" className="sr-only" tabIndex={-1} aria-label="Upload a text document" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
             <textarea id="document-text" className="document-input" value={form.documentText} onChange={(event) => { update("documentText", event.target.value); setFileName(null); }} aria-describedby="document-hint document-count" placeholder="Paste the bill, notice, or email here. Include dates, charges, and the company’s explanation where available." required />
             <div className="document-meta"><span id="document-hint">{fileName ? `Loaded ${fileName}` : "TXT or Markdown · max 256 KiB · no PDF or image support"}</span><span id="document-count" className={form.documentText.length > MAX_DOCUMENT_CHARACTERS ? "over-limit" : ""}>{form.documentText.length.toLocaleString("en-IN")} / 30,000 characters</span></div>
-            <label htmlFor="company-response" className="company-response-label">Company’s rejection or explanation <span className="required-note">Required</span></label>
-            <textarea id="company-response" className="company-response-input" value={form.companyResponse} onChange={(event) => update("companyResponse", event.target.value)} aria-describedby="company-response-hint company-response-count" placeholder="Paste the company’s actual reply separately. The Rebuttal Lab will investigate its explanation and identify what evidence is missing." required />
+            <label htmlFor="company-response" className="company-response-label">Company’s reply <span className="required-note">{form.intent === "review-reply" ? "Required" : "Optional"}</span></label>
+            <textarea id="company-response" className="company-response-input" value={form.companyResponse} onChange={(event) => update("companyResponse", event.target.value)} aria-describedby="company-response-hint company-response-count" placeholder="If you have received a reply, paste it here. The Rebuttal Lab will investigate its explanation and identify what evidence is missing." required={form.intent === "review-reply"} />
             <div className="company-response-meta"><p className="field-hint" id="company-response-hint">Use the exact reply where possible. An explanation is not proof that the company is right.</p><span id="company-response-count" className={`character-counter ${form.companyResponse.length > 12_000 ? "over-limit" : ""}`}>{form.companyResponse.length.toLocaleString("en-IN")} / 12,000 characters</span></div>
             <div className="sample-row"><span>Just looking around?</span><button className="text-button" type="button" onClick={() => { setForm({ ...DEFAULT_FORM, caseType: "subscription-cancel", documentText: SAMPLE, companyResponse: "Your subscription remained active through the next billing date. Our records show that cancellation was not completed before the renewal. We cannot refund the charge." }); setIsFictionalSample(true); setFileName(null); setError(null); setNotice("Fictional sample loaded. The company reply is invented; research results are retrieved live."); }}>Try a fictional example <span aria-hidden="true">→</span></button></div>
             <details className="preferences"><summary>Personalize your letter <span>Optional</span></summary><div className="form-grid preference-fields"><label htmlFor="user-name">Your name<input id="user-name" autoComplete="name" value={form.userName} maxLength={200} onChange={(event) => update("userName", event.target.value)} placeholder="Or leave a placeholder" /></label><label htmlFor="letter-language">Letter language<input id="letter-language" value="English" readOnly aria-describedby="language-hint" /><span className="field-hint" id="language-hint">English is supported in this version.</span></label><label htmlFor="desired-outcome" className="full-width">What would resolve this?<input id="desired-outcome" value={form.desiredOutcome} maxLength={2000} onChange={(event) => update("desiredOutcome", event.target.value)} placeholder="For example, cancel my plan and review the latest charge" /></label><label htmlFor="reply-deadline" className="full-width">Requested reply period<input id="reply-deadline" value={form.replyDeadline} maxLength={100} onChange={(event) => update("replyDeadline", event.target.value)} aria-describedby="reply-hint" /><span className="field-hint" id="reply-hint">A requested response time, not an established legal deadline.</span></label></div></details>
-            <div className="submission-row"><button className="secondary-button" type="button" onClick={() => { setError(null); setStage(1); }}>Back</button><button className="primary-button" type="button" onClick={reviewCase}>Review details <span aria-hidden="true">→</span></button></div>
+            <div className="submission-row"><button className="secondary-button" type="button" onClick={() => { setError(null); setStage(1); }}>Back</button><button className="primary-button" type="button" disabled={preparing} onClick={() => void reviewCase()}>{preparing ? "Reading your record…" : "Check my facts"} <span aria-hidden="true">→</span></button></div>
             </> : null}
             {stage === 3 ? <>
               <p className="eyebrow intake-stage-label">Step 3 · Check before analysis</p>
-              <div className="intake-review"><dl><div><dt>Company</dt><dd>{form.companyName || "Not listed"}</dd></div><div><dt>Research jurisdiction</dt><dd>{COUNTRIES.find((country) => country.code === form.country)?.label}</dd></div><div><dt>Complaint type</dt><dd>{CASE_TYPES.find((pack) => pack.id === form.caseType)?.label}</dd></div><div><dt>Scope answers provided</dt><dd>{Object.values(form.scopeAnswers).filter(Boolean).length} · optional details</dd></div><div><dt>Primary document</dt><dd>{fileName || `${form.documentText.length.toLocaleString("en-IN")} characters pasted`}</dd></div><div><dt>Company response</dt><dd>{form.companyResponse.length.toLocaleString("en-IN")} characters</dd></div><div><dt>Additional exhibits</dt><dd>{additionalDocuments.length}</dd></div></dl></div>
+              <section className="fact-confirmation"><h3>Did we understand your record?</h3><p>Check these extracted statements. If something is wrong, go back and clarify the document text before continuing. These statements are not independently verified.</p><dl>{Object.entries(preparedFacts ?? {}).filter(([key]) => !['companyPosition','disputeSummary'].includes(key)).map(([key,value]) => <div key={key}><dt>{key.replace(/([a-z])([A-Z])/g,'$1 $2')}</dt><dd>{Array.isArray(value) ? value.join(' · ') : String(value ?? 'Not stated')}</dd></div>)}</dl><label><input type="checkbox" checked={factsConfirmed} onChange={event => setFactsConfirmed(event.target.checked)} /> I checked these details against my record.</label></section><div className="intake-review"><dl><div><dt>Company</dt><dd>{form.companyName || "Not listed"}</dd></div><div><dt>Research jurisdiction</dt><dd>{COUNTRIES.find((country) => country.code === form.country)?.label}</dd></div><div><dt>Complaint type</dt><dd>{CASE_TYPES.find((pack) => pack.id === form.caseType)?.label}</dd></div><div><dt>Scope answers provided</dt><dd>{Object.values(form.scopeAnswers).filter(Boolean).length} · optional details</dd></div><div><dt>Primary document</dt><dd>{fileName || `${form.documentText.length.toLocaleString("en-IN")} characters pasted`}</dd></div><div><dt>Company response</dt><dd>{form.companyResponse.length.toLocaleString("en-IN")} characters</dd></div><div><dt>Additional exhibits</dt><dd>{additionalDocuments.length}</dd></div></dl></div>
               <p className="privacy-note">Your text is sent to the configured analysis and research providers. Guest cases are not saved. After analysis, you can choose whether to save the full case to a private account.</p>
-              <div className="submission-row"><button className="secondary-button" type="button" onClick={() => { setError(null); setStage(2); }}>Back to documents</button><button className="primary-button" type="submit" disabled={running}>{running ? "Analysis in progress" : "Analyze my case"}<span aria-hidden="true">→</span></button></div>
+              <div className="submission-row"><button className="secondary-button" type="button" onClick={() => { setError(null); setStage(2); }}>Back to documents</button><button className="primary-button" type="submit" disabled={running || !factsConfirmed}>{running ? "Analysis in progress" : "Review my case"}<span aria-hidden="true">→</span></button></div>
             </> : null}
           </fieldset>
           {error ? <div className="feedback error-feedback" role="alert">{error}</div> : null}
           {notice ? <p className="feedback notice-feedback" role="status">{notice}</p> : null}
-          {running ? <div className="analysis-status" role="status" aria-live="polite"><span className="activity-indicator" aria-hidden="true" /><div><strong>Building your case analysis…</strong><p>Following the real research and evidence checks as they happen.</p><AnalysisProgress events={progressEvents} /></div></div> : null}
+          {running ? <div className="analysis-status" role="status" aria-live="polite"><span className="activity-indicator" aria-hidden="true" /><div><strong>Building your case analysis…</strong><p>Following the real research and evidence checks as they happen.</p><details><summary>View review activity</summary><AnalysisProgress events={progressEvents} /></details></div></div> : null}
           {running ? <div className="submission-row"><button className="secondary-button" type="button" onClick={() => requestRef.current?.abort()}>Cancel analysis</button></div> : stage === 1 ? <button className="text-button clear-button" type="button" onClick={reset}>Clear all details</button> : null}
         </form>
       </section>

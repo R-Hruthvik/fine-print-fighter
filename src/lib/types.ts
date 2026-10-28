@@ -96,6 +96,7 @@ export interface EscalationStep {
 }
 
 export interface PipelineResult {
+  reviewSummary?: import("./review-summary").ReviewSummary;
   facts: ExtractedFacts;
   factEvidence: Record<string, { documentId: string; label: string; excerpts: string[] }>;
   /** User-entered scope details remain separate from document-extracted facts. Optional for older saved runs. */

@@ -16,7 +16,7 @@ export function parseCaseRequest(input: unknown) {
   if (b.documentText.length > 30000) throw new RequestError(413, "INPUT_TOO_LARGE", "Document text exceeds 30,000 characters.");
   const companyResponse = b.companyResponse === undefined ? "" : b.companyResponse;
   if (typeof companyResponse !== "string") throw new RequestError(400, "INVALID_REQUEST", "Company response must be text.");
-  if (!companyResponse.trim()) throw new RequestError(400, "INVALID_REQUEST", "Provide the company’s response or rejection for the Rebuttal Lab.");
+  if (!companyResponse.trim() && b.intent !== "first-complaint") throw new RequestError(400, "INVALID_REQUEST", "Provide the company’s response or rejection for the Rebuttal Lab.");
   if (companyResponse.length > 12000) throw new RequestError(413, "INPUT_TOO_LARGE", "Company response exceeds 12,000 characters.");
   const additionalDocuments = b.additionalDocuments === undefined ? [] : b.additionalDocuments;
   if (!Array.isArray(additionalDocuments) || additionalDocuments.length > 3) throw new RequestError(400, "INVALID_REQUEST", "Provide up to three additional evidence documents.");

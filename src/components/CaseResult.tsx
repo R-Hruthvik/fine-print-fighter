@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import type { AnalysisProgressEvent, PipelineResult } from "@/lib/types";
+import { buildReviewSummary } from "@/lib/review-summary";
 import { COUNTRIES } from "@/lib/packs";
 import { exportLetter, safeUrl } from "./workflow";
 import { AnalysisProgress } from "./AnalysisProgress";
@@ -79,6 +80,8 @@ export function CaseResult({ result, previousResult = null, additionalDocuments 
     setEvidenceError(null);
     await onRecheck([{ id: `e-${crypto.randomUUID()}`, label: selectedDraft.label.trim(), text: selectedDraft.text }]);
   }
+  const [reviewView, setReviewView] = useState<'next' | 'details' | 'letter' | 'sources'>('next');
+  const summary = result.reviewSummary ?? buildReviewSummary(result);
   const sourceMap = new Map(result.sources.map((source) => [source.id, source]));
   const country = COUNTRIES.find((item) => item.code === result.country)?.label ?? "Selected jurisdiction";
   const unanswered = result.unanswered ?? [];
@@ -103,16 +106,28 @@ export function CaseResult({ result, previousResult = null, additionalDocuments 
 
   return (
     <>
-      <div className="screen-only">
-        <div className="results-title"><div><p className="eyebrow">Your case, organized</p><h1>Here’s where you stand.</h1><p>Research scope: {country}. Review the evidence and fill any gaps before taking action.</p>{isFictionalSample ? <p className="fictional-disclosure" role="note"><strong>Fictional demo.</strong> The example consumer, company, and reply are invented. Research is live; it does not establish company policy or eligibility.</p> : null}<p className="model-attribution">Analysis model: <strong>{result.run.model}</strong> via Nebius Token Factory · Web research: Tavily ({result.run.researchMode === "keyed" ? "configured key" : "keyless, rate-limited"})</p></div><button className="secondary-button" onClick={onReset}>Start a new case <span aria-hidden="true">↗</span></button></div>
-        <nav className="results-nav" aria-label="Jump to a case review section"><div className="results-nav-links"><a href="#rebuttal-heading">Company reply</a><a href="#facts-heading">Your facts</a><a href="#findings-heading">Research findings</a><a href="#remedy-heading">Remedy</a><a href="#letter-heading">Draft letter</a><a href="#evidence-heading">Sources ({result.sources.length})</a></div></nav>
+      <div className="screen-only guided-review" data-review-view={reviewView} onClick={event => {
+        const target = event.target as HTMLElement;
+        const link = target.closest('a[href^="#source-"]');
+        if(link) { setReviewView('sources'); const id = link.getAttribute('href')!.slice(1); requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView()); }
+      }}>
+        <div className="results-title"><div><p className="eyebrow">Your case, organized</p><h1>Your next step.</h1><p>Research scope: {country}. Review the evidence and fill any gaps before taking action.</p>{isFictionalSample ? <p className="fictional-disclosure" role="note"><strong>Fictional demo.</strong> The example consumer, company, and reply are invented. Research is live; it does not establish company policy or eligibility.</p> : null}<p className="model-attribution">Analysis model: <strong>{result.run.model}</strong> · Web research: Tavily ({result.run.researchMode === "keyed" ? "configured key" : "keyless, rate-limited"})</p></div><button className="secondary-button" onClick={onReset}>Start a new case <span aria-hidden="true">↗</span></button></div>
+        <section className="decision-summary" aria-labelledby="decision-heading">
+          <h2 id="decision-heading">{summary.title}</h2><p>{summary.explanation}</p>
+          {summary.questions.length ? <ul>{summary.questions.map(q => <li key={q}>{q}</li>)}</ul> : null}
+          <p className="field-hint">{summary.limitations[0]}</p>
+          <button className="primary-button" onClick={() => setReviewView(summary.nextAction === 'Review the details' ? 'details' : 'letter')}>{summary.nextAction}</button>
+        </section>
+        <nav className="review-views" aria-label="Your review">
+          {([['next','Next step'],['details','Why this?'],['letter','Your reply'],['sources','Evidence record']] as const).map(([id,label]) => <button key={id} type="button" aria-pressed={reviewView === id} onClick={() => setReviewView(id)}>{label}</button>)}
+        </nav>
         {previousResult ? <section className="revision-panel" aria-labelledby="revision-heading"><div><p className="eyebrow">Revision comparison</p><h2 id="revision-heading">Review before and after the exhibit</h2><p>Each analysis is shown separately. A changed hypothesis is not a verified outcome.</p></div><div className="revision-columns"><div><h3>Prior review</h3><div className="revision-list">{previousResult.rebuttalLab.objections.length ? previousResult.rebuttalLab.objections.map((objection,index) => <article key={`${index}-${objection.hypothesis}`}><strong>{objection.hypothesis}</strong><span>{objection.status}</span>{objection.supportingPassage ? <blockquote>“{objection.supportingPassage}”</blockquote> : <small>No exact source passage was retained.</small>}</article>) : <p>No objection was identified.</p>}</div></div><div><h3>Current review</h3><div className="revision-list">{result.rebuttalLab.objections.length ? result.rebuttalLab.objections.map((objection,index) => <article key={`${index}-${objection.hypothesis}`}><strong>{objection.hypothesis}</strong><span>{objection.status}</span>{objection.evidenceMatch ? <blockquote>“{objection.evidenceMatch.passage}”</blockquote> : objection.supportingPassage ? <blockquote>“{objection.supportingPassage}”</blockquote> : <small>No exact source passage was retained.</small>}</article>) : <p>No objection was identified.</p>}</div></div></div></section> : null}
         <div className="results-layout">
           <div className="results-primary">
             <section className="strength-panel" aria-labelledby="strength-heading"><div className="strength-topline"><p className="eyebrow">Evidence assessment</p><span className="status-label">{noEvidence ? "Insufficient evidence" : `${result.score.coverage ?? "limited"} quote coverage · weak rating`}</span></div><h2 id="strength-heading">{noEvidence ? "More source material is needed." : "Quote traceability checked; claim support is unreviewed."}</h2><ul>{result.score.reasons.map((reason, index) => <li key={index}>{reason}</li>)}</ul><p className="assessment-note">The rating stays weak until source relation is separately reviewed. It does not predict a legal outcome.</p>{result.score.evidenceToGather.length ? <div className="gather-evidence"><h3>What to gather next</h3><ul>{result.score.evidenceToGather.map((item, index) => <li key={index}>{item}</li>)}</ul></div> : null}</section>
 
             <section className="rebuttal-lab" aria-labelledby="rebuttal-heading">
-              <div className="rebuttal-heading"><div><p className="eyebrow">Investigate the explanation</p><h2 id="rebuttal-heading">Rebuttal Lab</h2></div><span className="status-label">Evidence, not assumptions</span></div>
+              <div className="rebuttal-heading"><div><p className="eyebrow">Investigate the explanation</p><h2 id="rebuttal-heading">The company’s explanation</h2></div><span className="status-label">Evidence, not assumptions</span></div>
               <p className="section-description">Examine the company’s possible objection, see the missing evidence, and add a specific document to recheck the record. New evidence may support either side.</p>
               {recheckNotice ? <p className="feedback notice-feedback" role="status">{recheckNotice}</p> : null}
               {additionalDocuments.length ? <div className="retained-exhibits"><h3>Exhibits included in this review ({additionalDocuments.length}/3)</h3><ul>{additionalDocuments.map((document) => <li key={document.id}><span>{document.label} · {document.id}</span><button className="text-button" type="button" disabled={rechecking} onClick={() => onRemoveDocument?.(document.id)}>Remove from next recheck</button></li>)}</ul></div> : null}

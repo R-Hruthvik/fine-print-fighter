@@ -5,7 +5,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
   return <div className="site-shell">
     <a className="skip-link" href="#main-content">Skip to content</a>
     <header className="site-header">
-      <Link className="brand" href="/" aria-label="Fine Print Fighter home"><span className="brand-mark" aria-hidden="true">fp.</span><span>Fine Print<br />Fighter</span></Link>
+      <Link className="brand" href="/" aria-label="Fine Print Fighter home"><span className="brand-mark" aria-hidden="true">§</span><span>Fine Print <em>Fighter</em></span></Link>
       <nav className="primary-nav" aria-label="Main navigation">
         <Link href="/complaints">Complaints</Link><Link href="/companies">Companies</Link><Link href="/guides">Guides</Link><Link href="/cases">My cases</Link>
       </nav>

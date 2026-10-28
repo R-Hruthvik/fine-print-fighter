@@ -1,0 +1,9 @@
+# Guided review implementation
+
+The complaint workspace now separates first complaints from company-reply reviews. The new `/api/prepare` endpoint performs bounded fact extraction before research, using existing validation and production/shared-budget protection. Users check extracted statements and can return to clarify their original record before confirming. Corrections are made in the record rather than silently replacing evidence with model-generated assertions.
+
+The analysis response adds an optional conservative `reviewSummary`: conflicts take priority, unresolved questions are deduplicated and bounded, and no refund entitlement is inferred. Older results derive this summary locally. Results open on a next-step view; supporting review, draft, and the full evidence record have explicit navigation. Source links open the evidence view. The source column no longer runs beside the entire result. Saving and activity are secondary disclosures. The intake no longer includes a competing offline demo.
+
+Limits: this is the initial guided-flow implementation. It does not add server-side resumable jobs, persisted guest checkpoints, stage caching, or claim-level incremental reanalysis. Preparation and full analysis currently extract independently; the latter revalidates the actual submitted record. Authenticated saved-case detail pages retain their existing layout. Human-reviewed applicability and source freshness remain unresolved by this presentation change.
+
+Research used: frontend-learn archive constraint layout, typography, focus, motion and accessibility curriculum; Impeccable Operate guidance; React Best Practices; Browser Harness. Browser check at 390px confirmed no overflow, both intent selection and removal of the offline demo. Full backend live-journey verification remains a separate run.
