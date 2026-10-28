@@ -116,7 +116,8 @@ test("all launch packs and scopes return cited factual letters and preserve conf
       assert.equal(result.letterCitations[0].url, "https://example.com/policy");
       assert.match(result.letter, /\[1\]/);
       assert.match(result.letter, /confirm whether this information applies/);
-      assert.equal(result.conflicts.length, 1);
+      assert.equal(result.conflicts.length, 0);
+      assert.ok(result.unverified.some(item => item.includes("different terms")));
       assert.equal(result.country, country);
     }
   }
