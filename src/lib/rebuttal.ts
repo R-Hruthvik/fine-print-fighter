@@ -44,7 +44,8 @@ export async function investigateObjections(args:{ facts:ExtractedFacts; company
   for(let turn=0;turn<3;turn++){
     args.signal?.throwIfAborted();
     const started=Date.now();
-    const message=await llmToolTurn({messages,tools,signal:args.signal});
+    const turnTools=actions.length>=4 ? tools.filter(tool=>isObject(tool.function)&&tool.function.name==='finish_investigation') : tools;
+    const message=await llmToolTurn({messages,tools:turnTools,signal:args.signal});
     const allCalls=Array.isArray(message.tool_calls)?message.tool_calls:[];
     const seenCallIds=new Set<string>();
     const validCalls=allCalls.filter((call):call is Record<string,unknown>&{id:string;function:Record<string,unknown>&{name:string;arguments:string}}=>{
@@ -72,6 +73,7 @@ export async function investigateObjections(args:{ facts:ExtractedFacts; company
       let output:unknown={error:'Unknown or invalid tool request.'};
       let sourceIds:string[]=[];
       let summary:string|undefined;
+      if(actions.length>=4){messages.push({role:'tool',tool_call_id:raw.id,name,content:'Investigation action budget exhausted. Finish with the retained sources.'});continue;}
       if(name==='research_objection'&&typeof parsed.focus==='string'&&(focusTypes as readonly string[]).includes(parsed.focus)){
         const focus=parsed.focus as typeof focusTypes[number];
         const focusText:Record<typeof focusTypes[number],string>={cancellation_timing:'when cancellation became effective and whether confirmation was required',billing_cycle:'billing cutoff dates and the next renewal cycle',policy_exception:'published exceptions and notice requirements',authorization:'what proves the payment was authorized'};
@@ -102,7 +104,7 @@ export async function investigateObjections(args:{ facts:ExtractedFacts; company
       messages.push({role:'tool',tool_call_id:raw.id,name,content:JSON.stringify(output).slice(0,8000)});
       if(actions.length>=4)break;
     }
-    if(final!==undefined||actions.length>=4||toolCallCount>=6)break;
+    if(final!==undefined||toolCallCount>=6)break;
   }
   const rawObjections=isObject(final)&&Array.isArray(final.objections)?final.objections:[];
   const objections:Objection[]=rawObjections.slice(0,3).flatMap((item,index)=>{

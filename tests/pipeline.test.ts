@@ -164,3 +164,18 @@ test("source authority is assigned only by exact reviewed pages or a matching li
   classifySourceProfiles(unlisted, pack, "IN", "Unlisted Air Service");
   assert.equal(unlisted[0].authority, "unreviewed");
 });
+
+test('investigation reserves a final turn after four source inspections', async () => {
+  process.env.NEBIUS_API_KEY='test';
+  const { investigateObjections }=await import('../src/lib/rebuttal');
+  let calls=0;
+  global.fetch=async()=>{
+    calls++;
+    const tool_calls=calls===1 ? [1,2,3,4].map(n=>({id:`inspect-${n}`,type:'function',function:{name:'inspect_source',arguments:JSON.stringify({sourceId:'s1'})}})) : [{id:'finish',type:'function',function:{name:'finish_investigation',arguments:JSON.stringify({objections:[{hypothesis:'Policy may require confirmation',supportingPassage:'Cancellation needs confirmation.',sourceIds:['s1'],evidenceNeeded:['Confirmation']} ]})}}];
+    return Response.json({choices:[{message:{tool_calls}}]});
+  };
+  const result=await investigateObjections({facts:{company:'Example'},companyResponse:'Account active',country:'US',additionalDocuments:[],sources:[{id:'s1',title:'Policy',url:'https://example.com',snippet:'Cancellation needs confirmation.',retrievedAt:new Date().toISOString()}]});
+  assert.equal(calls,2);
+  assert.equal(result.objections.length,1);
+  assert.equal(result.objections[0].status,'unresolved');
+});
