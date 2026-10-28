@@ -1,0 +1,11 @@
+# Output clarity and truth-status review
+
+Live source audit confirms three Tavily search queries (jurisdiction rules, company policy, similar complaints), deduplicated retained search snippets, and bounded model tools for further inspection/research. Model itself does not browse arbitrary pages. No Tavily key is configured, so full-page extraction is skipped. Existing source/claim status already restricts applicability; the customer summary now explicitly distinguishes snippets-only research from page retrieval.
+
+Fixes: model conflict strings are described as automated questions, not confirmed contradictions; summaries recompute for old saved result shapes; matched/unmatched quotations use neutral explanatory labels instead of a success color; long snippets are disclosures; two initial questions keep the next-step screen focused; status details disclose document provenance, research coverage and limits of advice; quote truncation in additional exhibits uses a word boundary and explicit omission marker. Compact result spacing reduces mobile overhead.
+
+Measured text/background contrast: ink/paper 15.53:1, muted/paper 6.97:1, accent/light paper 5.10:1, evidence links/paper 6.98:1. These are specific palette pairs, not a blanket WCAG certification. Browser confirmed 16px body and no 390px page overflow; desktop/mobile screenshots inspected.
+
+Live follow-up retest completed in 82.429s with real keyless search. Model STILL called compatible attempt/account-active statements incompatible; hypotheses about account restart also remain hypotheses, not established events. Advice correctness is NOT certified. Current safe output is a clarification request with explicit uncertainty. Structured conflict pairs with exact document references and an event-identity validation gate remain necessary before asserting actual contradiction. Full-page freshness/applicability review also remains necessary before actionable legal advice.
+
+Full verify passed 93 tests, lint, TypeScript and build before final CSS spacing adjustment. Skills applied: frontend-learn typography/constraint layout/focus guidance, Impeccable inspection, Systematic Debugging, TDD and Verification Before Completion. No new legal eligibility or remedy claim was added.

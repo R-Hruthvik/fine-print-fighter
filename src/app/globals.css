@@ -864,3 +864,27 @@ body { font-size: 16px; }
  .primary-nav { justify-content: flex-start; column-gap: 20px; }
 }
 .analysis-notes > summary { cursor: pointer; min-height: 44px; padding-block: 10px; font-weight: 600; }
+
+/* Calm evidence communication: color signals actions, not truth. */
+.truth-status { margin: 20px 0; padding-top: 14px; border-top: 1px solid var(--line); }
+.truth-status p { margin: 8px 0; font-size: 15px; line-height: 1.65; }
+.guided-review .finding-status { background: #ede6d8; color: #493f30; }
+.guided-review .finding-status.unsupported { background: #f1e6df; color: #713d2a; }
+.guided-review .finding-sources a, .guided-review .source-card h3 a { color: #8c3419; }
+.guided-review .source-excerpt summary { cursor: pointer; padding: 12px 0; min-height: 44px; }
+.guided-review .decision-summary { border-color: #d4c8af; }
+.guided-review .review-views { position: static; }
+
+.truth-status summary { cursor: pointer; min-height: 44px; padding-block: 10px; font-size: 15px; font-weight: 600; }
+.research-coverage-note { color: var(--muted); font-size: 14px; line-height: 1.6; }
+.intake-page:has(.guided-review) .intake-breadcrumb { display: none; }
+.guided-review .results-title { padding-bottom: 12px; gap: 16px; }
+.guided-review .results-title .eyebrow { display: none; }
+.guided-review .results-title h1 { margin-bottom: 10px; }
+.guided-review .decision-summary { margin-top: 12px; }
+@media (max-width:580px) {
+ .intake-page:has(.guided-review) { padding-top: 24px; }
+ .guided-review .results-title { flex-direction: column; gap: 12px; }
+ .guided-review .results-title h1 { font-size: 1.8rem; }
+ .guided-review .decision-summary { padding: 18px; }
+}

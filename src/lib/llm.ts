@@ -169,7 +169,8 @@ export async function draftLetter(
   const entries=Object.entries(facts).filter(([key,value]) => key!=='disputeSummary' && key!=='companyPosition' && value!==null && value!==undefined && value!=='' && (!Array.isArray(value) || value.length>0));
   const factualDetails=entries.map(([key,value]) => literal(`${factLabel(key)}: ${Array.isArray(value) ? value.join('; ') : String(value)}`)).join('\n');
   const exhibits=additionalDocuments.slice(0,3).map((document,index)=>{
-    const excerpt=document.text.replace(/\s+/g,' ').trim().slice(0,320);
+    const normalized=document.text.replace(/\s+/g,' ').trim();
+    const excerpt=normalized.length>640 ? normalized.slice(0,640).replace(/\s+\S*$/, '')+' […]' : normalized;
     return `Additional evidence provided (${literal(document.label || `Exhibit ${index + 1}`)}): “${literal(excerpt)}”`;
   });
   const name=userName.trim() && userName!=='not supplied' ? literal(userName.trim()) : '[Your name]';
