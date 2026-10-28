@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test, afterEach } from 'node:test';
-import { llmJSON, llmToolTurn, ProviderError } from '../src/lib/provider';
+import { llmJSON, llmToolTurn, modelTurnTimeoutMs, ProviderError } from '../src/lib/provider';
 import { researchWithWarnings } from '../src/lib/tavily';
 
 const originalFetch = global.fetch;
@@ -166,4 +166,33 @@ test('valid JSON with wrong field types is repaired once and checked again', asy
   global.fetch=async () => {calls++;return Response.json({choices:[{message:{content:JSON.stringify(calls===1 ? {ok:'yes'} : {ok:true})}}]});};
   assert.deepEqual(await llmJSON({system:'system',user:'user'},'{ok:boolean}',object),{ok:true});
   assert.equal(calls,2);
+});
+
+test('explicit reasoning opt-out is sent for JSON and investigation requests', async () => {
+  process.env.LLM_PROVIDER='openai-compatible';
+  process.env.OPENAI_COMPATIBLE_BASE_URL='http://localhost:3010/v1';
+  process.env.OPENAI_COMPATIBLE_MODEL='test';
+  process.env.LLM_REASONING_ENABLED='false';
+  const bodies:Record<string,unknown>[]=[];
+  global.fetch=async (_input,init)=>{bodies.push(JSON.parse(String(init?.body)));return Response.json({choices:[{message:{content:'{"ok":true}'}}]});};
+  try {
+    await llmJSON({system:'test',user:'test'},'{}',object);
+    await llmToolTurn({messages:[{role:'user',content:'test'}],tools:[]});
+    assert.deepEqual(bodies.map(b=>b.reasoning),[{enabled:false},{enabled:false}]);
+  } finally { delete process.env.LLM_REASONING_ENABLED; }
+});
+
+test('model turn timeout is bounded and invalid settings retain the default', () => {
+  const original=process.env.LLM_TURN_TIMEOUT_MS;
+  try {
+    for (const value of ['', 'invalid', '-1', '60001']) {
+      process.env.LLM_TURN_TIMEOUT_MS=value;
+      assert.equal(modelTurnTimeoutMs(),25000);
+    }
+    process.env.LLM_TURN_TIMEOUT_MS='60000';
+    assert.equal(modelTurnTimeoutMs(),60000);
+  } finally {
+    if(original===undefined) delete process.env.LLM_TURN_TIMEOUT_MS;
+    else process.env.LLM_TURN_TIMEOUT_MS=original;
+  }
 });

@@ -79,11 +79,21 @@ export interface LLMCallOptions {
   signal?:AbortSignal;
 }
 
+export function modelTurnTimeoutMs(): number {
+  const value = Number(process.env.LLM_TURN_TIMEOUT_MS);
+  return Number.isInteger(value) && value >= 1000 && value <= 60000 ? value : 25000;
+}
+
+/** Optional gateway-specific opt-out; omit for providers using their defaults. */
+function reasoningOptions(): Record<string, unknown> {
+  return process.env.LLM_REASONING_ENABLED === 'false' ? { reasoning: { enabled: false } } : {};
+}
+
 export async function llmToolTurn(options: { messages: Record<string, unknown>[]; tools: Record<string, unknown>[]; signal?: AbortSignal }): Promise<Record<string, unknown>> {
   const config=requireModelProviderConfig();
-  const timeout=options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(25_000)]) : AbortSignal.timeout(25_000);
+  const timeout=options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(modelTurnTimeoutMs())]) : AbortSignal.timeout(modelTurnTimeoutMs());
   try {
-    const response=await fetch(`${config.baseUrl}/chat/completions`,{method:'POST',signal:timeout,headers:authHeaders(config.apiKey),body:JSON.stringify({model:config.model,temperature:0.1,max_tokens:1800,messages:options.messages,tools:options.tools,tool_choice:'auto'})});
+    const response=await fetch(`${config.baseUrl}/chat/completions`,{method:'POST',signal:timeout,headers:authHeaders(config.apiKey),body:JSON.stringify({...reasoningOptions(),model:config.model,temperature:0.1,max_tokens:1800,messages:options.messages,tools:options.tools,tool_choice:'auto'})});
     if (!response.ok) throw providerHttpError(response.status);
     const envelope:unknown=await response.json();
     if (!isObject(envelope) || !Array.isArray(envelope.choices) || !isObject(envelope.choices[0]) || !isObject(envelope.choices[0].message)) throw new ProviderError('The investigation model returned an invalid response.',502,'INVALID_MODEL_RESPONSE',true);
@@ -102,12 +112,13 @@ export async function llmJSON<T>(options:LLMCallOptions, schemaHint:string, vali
   let repair=false;
   for (let attempt=0;attempt<attempts;attempt++) {
     options.signal?.throwIfAborted();
-    const signal=options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(25_000)]) : AbortSignal.timeout(25_000);
+    const signal=options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(modelTurnTimeoutMs())]) : AbortSignal.timeout(modelTurnTimeoutMs());
     try {
       const response=await fetch(`${config.baseUrl}/chat/completions`, {
         method:'POST',signal,
         headers:authHeaders(config.apiKey),
         body:JSON.stringify({
+          ...reasoningOptions(),
           model:config.model,
           temperature:options.temperature ?? 0.1,max_tokens:options.maxTokens ?? 2500,
           messages:[{role:'system',content:options.system},{role:'user',content:options.user + (repair ? `\nYour last response was invalid. Return only JSON matching this schema: ${schemaHint}` : '')}],
