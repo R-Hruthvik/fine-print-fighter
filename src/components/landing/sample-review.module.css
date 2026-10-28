@@ -45,7 +45,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font: 600 10.5px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 14px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--color-ink-soft);
@@ -95,7 +95,7 @@
 }
 
 .label {
-  font: 600 10.5px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 14px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--color-ink-soft);
@@ -112,7 +112,7 @@
 }
 
 .summary {
-  font: 700 12px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 700 14px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--color-stamp);
   list-style: none;
   display: flex;
@@ -146,14 +146,14 @@
   min-width: 0;
 }
 .body p {
-  font: 400 10.5px/1.7 var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 400 14px/1.7 var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--color-ink-soft);
   margin: 0;
   min-width: 0;
 }
 
 .addButton {
-  font: 600 10.5px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 14px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--color-ink);
@@ -186,7 +186,7 @@
 }
 
 .aside {
-  font: italic 500 13px var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
+  font: italic 500 14px var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
   color: var(--color-ink-soft);
   margin: 0;
   min-width: 0;
@@ -222,7 +222,7 @@
 }
 
 .replyLabel {
-  font: 600 10px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 14px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--color-ink-soft);
@@ -231,7 +231,7 @@
 }
 
 .fictionalLabel {
-  font: 600 8.5px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 14px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--color-stamp);
@@ -248,7 +248,7 @@
   min-height: 220px;
   padding: 14px 16px;
   font-family: var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12.5px;
+  font-size: 14px;
   line-height: 1.75;
   color: var(--color-ink);
   background: linear-gradient(180deg, #fdfaf1, #f9f4e6);
@@ -272,7 +272,7 @@
 }
 
 .wordCount {
-  font: 600 9px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 14px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--color-ink-soft);
@@ -281,7 +281,7 @@
 
 .copyButton,
 .resetButton {
-  font: 600 10.5px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 14px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: .14em;
   text-transform: uppercase;
   padding: 10px 16px;
@@ -315,14 +315,14 @@
 }
 
 .status {
-  font: 500 10.5px var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font: 500 14px var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
   color: var(--color-ink-soft);
   margin: 0;
   min-width: 0;
 }
 
 .localOnly {
-  font: 400 9px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 400 14px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: #8a7f6a;
@@ -333,7 +333,7 @@
 }
 
 .newCaseLink {
-  font: 600 10.5px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 14px var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--color-ink);
@@ -391,10 +391,10 @@
 .fictionalLabel { margin-left: 0; }
 .textarea { min-height: 350px; background: transparent; box-shadow: none; border: 0; padding: 12px 0; }
 .detail[open] .expand { transform: rotate(45deg); }
-.summary { justify-content: space-between; font-size: 13px; line-height: 1.5; }
-.body p { font-size: 12px; }
+.summary { justify-content: space-between; font-size: 14px; line-height: 1.5; }
+.body p { font-size: 14px; }
 @media (max-width: 600px) {
   .reply { padding: 18px; }
-  .textarea { min-height: 330px; font-size: 12px; }
+  .textarea { min-height: 330px; font-size: 14px; }
   .actions { gap: 12px; }
 }

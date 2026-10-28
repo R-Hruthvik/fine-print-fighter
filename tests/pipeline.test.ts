@@ -179,3 +179,9 @@ test('investigation reserves a final turn after four source inspections', async 
   assert.equal(result.objections.length,1);
   assert.equal(result.objections[0].status,'unresolved');
 });
+
+test('different cancellation timeline events are not deterministic contradictions', async () => {
+  const {evaluateFindings}=await import('../src/lib/llm');
+  const result=await evaluateFindings({},[],{evaluationPrompt:'Review'},undefined,{primaryDocument:'Cancellation requested October 8, 2026. Renewal charged October 10, 2026.',companyResponse:'Reply dated October 15, 2026: cancellation request is acknowledged.'});
+  assert.deepEqual(result.conflicts,[]);
+});
