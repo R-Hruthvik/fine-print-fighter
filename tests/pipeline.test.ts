@@ -185,3 +185,14 @@ test('different cancellation timeline events are not deterministic contradiction
   const result=await evaluateFindings({},[],{evaluationPrompt:'Review'},undefined,{primaryDocument:'Cancellation requested October 8, 2026. Renewal charged October 10, 2026.',companyResponse:'Reply dated October 15, 2026: cancellation request is acknowledged.'});
   assert.deepEqual(result.conflicts,[]);
 });
+
+test('evaluation receives original excerpts and keeps later evidence separately labeled', async () => {
+  process.env.NEBIUS_API_KEY='test';
+  let prompt='';
+  global.fetch=async (_url,init)=>{prompt=String(init?.body);return Response.json({choices:[{message:{content:JSON.stringify({findings:[],unverified:[],unanswered:[],conflicts:[]})}}]});};
+  const {evaluateFindings}=await import('../src/lib/llm');
+  await evaluateFindings({},[{id:'s1',url:'https://example.com',title:'Policy',snippet:'Policy',retrievedAt:'2026-10-28'}],{evaluationPrompt:'Review'},undefined,{primaryDocument:'ORIGINAL REQUEST OCTOBER EIGHT',factEvidence:{cancellationAttempts:{documentId:'primary',label:'Original record',excerpts:['ORIGINAL REQUEST OCTOBER EIGHT']}},additionalDocuments:[{id:'later',label:'Confirmation',text:'TERMINATION OCTOBER TWELVE'}]});
+  assert.match(prompt,/ORIGINAL REQUEST OCTOBER EIGHT/);
+  assert.match(prompt,/TERMINATION OCTOBER TWELVE/);
+  assert.match(prompt,/factEvidence/);
+});
