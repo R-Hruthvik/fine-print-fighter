@@ -68,3 +68,34 @@ test('first complaints can omit a company reply without weakening reply-review v
   assert.equal(parseCaseRequest({...base,intent:'first-complaint'}).companyResponse,'');
   assert.throws(()=>parseCaseRequest(base));
 });
+
+test('workspace accepts separate labeled documents and permits a record without a typed note', () => {
+  const parsed = parseCaseRequest({documentText:'',packId:'subscription-cancel',country:'US',intent:'first-complaint',workspaceDocuments:[
+    {id:'rec1',label:'Receipt.txt',role:'record',text:'Charged $40.'},
+    {id:'rep1',label:'Reply.txt',role:'company-reply',text:'We decline.'},
+    {id:'rec2',label:'Email.txt',role:'record',text:'I requested cancellation.'},
+  ]});
+  assert.equal(parsed.documentText,'Charged $40.');
+  assert.equal(parsed.companyResponse,'We decline.');
+  assert.deepEqual(parsed.additionalDocuments,[{id:'rec2',label:'Email.txt',text:'I requested cancellation.'}]);
+});
+
+test('workspace rejects duplicate document identities, unsupported roles, absent jurisdiction and oversized documents', () => {
+  const base={documentText:'A note',packId:'subscription-cancel',country:'US',intent:'first-complaint'};
+  const doc={id:'one',label:'Record',role:'record',text:'A record'};
+  for(const mutation of [
+    {workspaceDocuments:[doc,doc]}, {workspaceDocuments:[{...doc,role:'other'}]},
+    {workspaceDocuments:[{...doc,text:'x'.repeat(12001)}]}, {country:''},
+    {workspaceDocuments:[{...doc,role:'company-reply'}, {...doc,id:'two',role:'company-reply'}]},
+  ]) assert.throws(()=>parseCaseRequest({...base,...mutation}));
+});
+
+test('workspace retains identity of record chosen as primary when the note is empty', () => {
+  const result=parseCaseRequest({documentText:'',packId:'subscription-cancel',country:'US',intent:'first-complaint',workspaceDocuments:[{id:'receipt',label:'Receipt.txt',role:'record',text:'Charged $40.'}]});
+  assert.deepEqual(result.workspacePrimary,{id:'receipt',label:'Receipt.txt'});
+});
+
+test('previous company replies retain their role when workspace evidence is parsed', () => {
+  const result=parseCaseRequest({documentText:'I was charged twice.',packId:'surprise-bill',country:'US',intent:'first-complaint',workspaceDocuments:[{id:'old',label:'Earlier reply',role:'previous-company-reply',text:'We refuse.'},{id:'new',label:'New reply',role:'company-reply',text:'We still refuse.'}]});
+  assert.deepEqual(result.additionalDocuments,[{id:'old',label:'Earlier reply',text:'We refuse.',role:'previous-company-reply'}]);
+});

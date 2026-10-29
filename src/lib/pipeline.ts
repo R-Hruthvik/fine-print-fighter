@@ -1,4 +1,7 @@
+import { workspaceResearchNeeded } from "./query";
+import { buildDocumentAudit } from "./document-audit";
 import { buildReviewSummary } from "./review-summary";
+import { extractWorkspaceRecords } from "./workspace-extract";
 import type { PipelineResult, RulePack, Country, ExtractedFacts, CompensationResult, AnalysisProgressEvent, AnalysisStage, ScopeAnswers, Source } from "./types";
 import { extractFacts, planQueries, evaluateFindings, scoreCase, draftLetter, escalateLadder } from "./llm";
 import { researchWithWarnings } from "./tavily";
@@ -10,9 +13,12 @@ import { COMPANIES } from "./catalog";
 
 export interface PipelineOptions {
   documentText: string;
+  workspaceMode?:boolean;
+  workspaceRecords?: {id:string;label:string;text:string}[];
+  workspacePrimary?: {id:string;label:string};
   companyResponse?: string;
   companyName?: string;
-  additionalDocuments?: {id:string;label:string;text:string}[];
+  additionalDocuments?: {id:string;label:string;text:string;role?:"previous-company-reply"}[];
   scopeAnswers?: ScopeAnswers;
   pack: RulePack;
   country: Country;
@@ -102,12 +108,27 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     } finally { stageDurations[name] = Date.now() - start; }
   }
   const primaryPack={...pack,extractionSchema:pack.extractionSchema.filter(key=>key!=="companyResponse"&&key!=="companyPosition")};
-  const extracted = await stage("extract", () => extractFacts(documentText, primaryPack, signal, true));
+  const extracted = await stage("extract", async () => {
+    const primary=await extractFacts(documentText, primaryPack, signal, true);
+    if (options.workspacePrimary) for (const evidence of Object.values(primary.evidence)) { evidence.documentId=options.workspacePrimary.id; evidence.label=options.workspacePrimary.label; }
+    if (!options.workspaceRecords?.length) return primary;
+    const additional=await extractWorkspaceRecords(options.workspaceRecords,primaryPack,signal);
+    for (const [key,value] of Object.entries(additional.facts)) {
+      if (unknown(primary.facts[key]) && additional.evidence[key]) {
+        primary.facts[key]=value; primary.evidence[key]=additional.evidence[key];
+      }
+    }
+    return primary;
+  });
   const {facts,evidence:factEvidence}=extracted;
+  emitProgress({type:"document-audit",audit:buildDocumentAudit({facts,factEvidence,companyResponse})});
   const missing = pack.requiredFacts.filter(key => unknown(facts[key]));
-  const queries = await stage("plan", () => planQueries(facts, country, pack, signal, companyName, scopeAnswers));
-  const research = await stage("research", () => researchWithWarnings(queries, signal, pack.searchPlan.preferredDomains));
-  const rebuttalLab=await stage("rebuttal",()=>companyResponse.trim() ? investigateObjections({facts,companyResponse,country,sources:research.sources,additionalDocuments,signal,onAction:(action)=>emitProgress({type:"tool",...action})}) : Promise.resolve({objections:[],actions:[],warnings:[],sources:research.sources}));
+  const searchNeeded=!options.workspaceMode || workspaceResearchNeeded([documentText,...additionalDocuments.map(doc=>doc.text)].join(" "),companyResponse);
+  const queries = searchNeeded ? (await stage("plan", () => planQueries(facts, country, pack, signal, companyName, scopeAnswers))).slice(0,options.workspaceMode ? 2 : 6) : [];
+  const research = searchNeeded ? await stage("research", () => researchWithWarnings(queries, signal, pack.searchPlan.preferredDomains)) : {sources:[] as Source[],warnings:[] as string[]};
+  const suppliedCompany=companyName ?? (typeof facts.company === "string" ? facts.company : undefined);
+  const officialCompanyDomain=COMPANIES.find(entry=>entry.name.toLocaleLowerCase()===suppliedCompany?.trim().toLocaleLowerCase() && entry.packIds.includes(pack.id) && entry.jurisdictions.includes(country))?.officialDomain;
+  const rebuttalLab=await stage("rebuttal",()=>companyResponse.trim() && searchNeeded ? investigateObjections({facts,companyResponse,country,officialCompanyDomain,sources:research.sources,additionalDocuments,signal,onAction:(action)=>emitProgress({type:"tool",...action})}) : Promise.resolve({objections:[],actions:[],warnings:[],sources:research.sources}));
   const sources=rebuttalLab.sources;
   classifySourceProfiles(sources,pack,country,companyName);
   const evaluation = await stage("evaluate", () => evaluateFindings(facts, sources, pack, signal, {companyResponse,additionalDocuments,primaryDocument:documentText,factEvidence,scopeAnswers}));
@@ -124,14 +145,17 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const { letter, citations } = await stage("draft", () => draftLetter(facts, findings, compensation, pack, userName, desiredOutcome, language, replyDeadline, sources, signal, additionalDocuments));
   const escalation = await stage("escalate", () => escalateLadder(pack, country, sources, signal));
   const warnings = [...research.warnings,...rebuttalLab.warnings];
+  if (companyResponse.trim() && (!searchNeeded || !sources.length)) warnings.push("The company response was not compared against public sources or analyzed for unanswered points. Review it alongside your records.");
   if (language.trim().toLowerCase() !== "english") warnings.push("The reviewable letter template is currently available in English only. Your requested language was not used.");
-  if (!queries.length) warnings.push("No usable research queries could be generated. Evidence coverage is incomplete.");
+  if (searchNeeded && !queries.length) warnings.push("No usable research queries could be generated. Evidence coverage is incomplete.");
+  if (!searchNeeded) warnings.push("Public research was not requested for this review; public policy and legal applicability were not checked.");
   if (missing.length) warnings.push("Important applicability details are missing. Check the unanswered questions before relying on the analysis.");
   if (scopeAnswers.answers.some(answer=>answer.status==="provided")) warnings.push("Scope details are user-entered and have not been checked against the original documents.");
   if (missingScope.length) warnings.push("Some scope details were not provided. Jurisdiction and eligibility may depend on those details.");
   if (pack.lastReviewed === null) warnings.push("This rule pack has not completed a jurisdiction review. Escalation entries are research suggestions; verify each body and deadline on its official website.");
   if (findings.some(f => f.verified && f.applicability !== "supported")) warnings.push("Matching passages establish traceability only. Applicability and claim interpretation still need review.");
   return {
+    documentAudit: buildDocumentAudit({facts,factEvidence,companyResponse}),
     reviewSummary: buildReviewSummary({conflicts, unanswered, warnings, sources}),
     facts, factEvidence, scopeAnswers, queries: queries.map(q => q.query), sources, findings, score, compensation, letter,
     letterCitations: citations, escalation, unanswered, unverified, conflicts,

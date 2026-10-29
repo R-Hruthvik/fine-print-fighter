@@ -5,7 +5,7 @@ import type { Source } from '../src/lib/types';
 const oldFetch=global.fetch;
 const oldKey=process.env.NEBIUS_API_KEY;
 afterEach(() => {global.fetch=oldFetch;if(oldKey===undefined)delete process.env.NEBIUS_API_KEY;else process.env.NEBIUS_API_KEY=oldKey;});
-const source:Source={id:'s1',title:'Policy',url:'https://example.com/policy',snippet:'Customers may request a review of their disputed charges.',retrievedAt:'2026-10-23'};
+const source:Source={id:'s1',title:'Policy',url:'https://example.com/policy',snippet:'Customers may request a review of their disputed charges.',retrievedAt:'2026-10-23',retrieval:'provider_extract'};
 
 test('search planning excludes private document fields and unsafe entity strings',async () => {
   global.fetch=async () => {throw new Error('Planner must not send full facts to a provider');};

@@ -99,41 +99,12 @@ interface Evaluation {
 function validEvaluation(value:unknown):value is Evaluation {
   return isObject(value) && Array.isArray(value.findings) && value.findings.length<=20 && value.findings.every(finding => isObject(finding) && text(finding.statement,3000) && ['favors-customer','favors-company','unclear'].includes(String(finding.stance)) && stringList(finding.sourceIds,10) && text(finding.supportingPassage,3000)) && stringList(value.unverified,20) && stringList(value.unanswered,20) && stringList(value.conflicts,20);
 }
-function amountTokens(value:string):{normalized:string;excerpt:string}[] {
-  const currency=/(?:INR|Rs\.?|USD|EUR|GBP|CAD|AUD|\$|€|£|₹)/i;
-  const pattern=/(?:INR|Rs\.?|USD|EUR|GBP|CAD|AUD|\$|€|£|₹)\s*\d[\d,]*(?:\.\d{1,2})?|\d[\d,]*(?:\.\d{1,2})?\s*(?:INR|Rs\.?|USD|EUR|GBP|CAD|AUD|\$|€|£|₹)/gi;
-  return [...value.matchAll(pattern)].map(match=>{
-    const digits=match[0].match(/[\d,]+(?:\.\d{1,2})?/);const raw=match[0].match(currency)?.[0]??"";
-    const code=/^(?:Rs\.?|₹)$/i.test(raw)?"INR":raw==="$"?"USD":raw==="€"?"EUR":raw==="£"?"GBP":raw.replace(/\W/g,"").toUpperCase();
-    return {normalized:`${code}:${(digits?.[0]??"").replace(/,/g,"")}`,excerpt:match[0]};
-  });
-}
-function localAmountConflicts(facts:ExtractedFacts,context:{companyResponse?:string;additionalDocuments?:{id:string;label:string;text:string}[];factEvidence?:Record<string,{documentId:string;label:string;excerpts:string[]}>}):string[] {
-  const currency=typeof facts.currency==="string"?facts.currency.toUpperCase():"";
-  const customerAmounts=Object.entries(facts).filter(([key,value])=>/amount|price|charge|cost|fee|fare|refund|payment/i.test(key)&&value!==null&&value!==undefined).flatMap(([key,value])=>{
-    const tokens=amountTokens(Array.isArray(value)?value.join(" "):String(value));
-    const exactExcerpt=context.factEvidence?.[key]?.excerpts[0];
-    if(typeof value==="number"&&Number.isFinite(value))return [...tokens,{normalized:`${currency}:${value}`,excerpt:exactExcerpt??String(value)}];
-    if(typeof value==="string"&&/^\s*[\d,]+(?:\.\d{1,2})?\s*$/.test(value)&&currency)return [...tokens,{normalized:`${currency}:${value.replace(/,/g,"").trim()}`,excerpt:exactExcerpt??value.trim()}];
-    return tokens;
-  });
-  if(!customerAmounts.length)return [];
-  const documents=[...(context.companyResponse?[{id:"company-response",label:"Company response",text:context.companyResponse}]:[]),...(context.additionalDocuments??[]).map(({id,label,text})=>({id,label,text}))];
-  const conflicts:string[]=[];
-  for(const document of documents){
-    const amounts=amountTokens(document.text);
-    const differences=amounts.filter(item=>!customerAmounts.some(customer=>customer.normalized===item.normalized));
-    if(differences.length)conflicts.push(`Amount conflict: primary document records ${customerAmounts.map(item=>item.excerpt).join(", ")}; ${document.label} [${document.id}] states ${differences.map(item=>`“${item.excerpt}”`).join(", ")}. Review the original documents; neither value is independently verified.`);
-  }
-  return [...new Set(conflicts)];
-}
-export async function evaluateFindings(facts:ExtractedFacts,sources:Source[],pack:{evaluationPrompt:string},signal?:AbortSignal,context:{companyResponse?:string;additionalDocuments?:{id:string;label:string;text:string}[];primaryDocument?:string;factEvidence?:Record<string,{documentId:string;label:string;excerpts:string[]}>;scopeAnswers?:ScopeAnswers}={}):Promise<Evaluation> {
-  const localConflicts=localAmountConflicts(facts,context);
-  // Different dates can describe different events; proximity cannot establish contradiction.
-  const deterministicConflicts=localConflicts;
+export async function evaluateFindings(facts:ExtractedFacts,sources:Source[],pack:{evaluationPrompt:string},signal?:AbortSignal,context:{companyResponse?:string;additionalDocuments?:{id:string;label:string;text:string;role?:"previous-company-reply"}[];primaryDocument?:string;factEvidence?:Record<string,{documentId:string;label:string;excerpts:string[]}>;scopeAnswers?:ScopeAnswers}={}):Promise<Evaluation> {
+  // Different amounts and dates can refer to different events; do not infer conflict by proximity.
+  const deterministicConflicts:string[]=[];
   if (!sources.length) return {findings:[],unverified:[],unanswered:['No usable research sources were available. Applicable rules and policies remain unknown.'],conflicts:deterministicConflicts};
-  const responseContext={primaryDocument:context.primaryDocument ?? "",factEvidence:context.factEvidence ?? {},companyResponse:context.companyResponse ?? "",additionalDocuments:(context.additionalDocuments ?? []).map(({id,label,text})=>({id,label,text}))};
-  const result=await llmJSON({system:SYSTEM,signal,maxTokens:3500,user:`Compare values in the primary document with source text, including points favoring the company. ${pack.evaluationPrompt}\nThe primary-document values below come only from the user's uploaded or pasted original document. Do not assume every sentence was written by the consumer; refer to the document and its exact excerpt. Scope answers are separate user-entered statements and are not confirmed by the documents; use them only as tentative context for scope, identify material conflicts with documents or the company response, and do not silently resolve them. The separately labeled company response and additional exhibits are contextual evidence and must never replace primary-document values. If evidence disagrees (especially on dates, amounts, or cancellation status), list the disagreement in conflicts and preserve each source's identity. Use exact string source IDs (s1, s2 etc), never numeric IDs. Each finding needs statement, stance (favors-customer|favors-company|unclear), sourceIds (string array), supportingPassage (one exact continuous quotation present in EVERY referenced source). Do not call a source applicable solely because it mentions a similar dispute. Keep unsupported hypotheses in unverified; missing facts and applicability questions in unanswered; conflicting source claims in conflicts. Only report a conflict when two statements make incompatible assertions about the SAME event or fact. A cancellation attempt, renewal, effective termination and reply are distinct events. An attempted cancellation and an active account can both be true; put uncertainty about completion in unanswered, not conflicts. A later confirmation may resolve a previously unknown effective date without proving the earlier cancellation attempt completed. Read the supplied exhibit before asking for that same information again. Distinguish what the exhibit states from whether it is independently verified. Return {findings,unverified,unanswered,conflicts,conflictPairs}. For a claimed effective-cancellation-date contradiction also return conflictPairs:[{event:"effective_cancellation_date",left:{documentId,quote},right:{documentId,quote}}]. Use document IDs primary, company-response, or the supplied exhibit ID; quote exact complete text. Do not convert dates or rewrite quotations. Unsupported conflicts remain unverified, not established. A cancellation attempt and an active account do not contradict each other.\nPrimary-document values (extracted separately): ${JSON.stringify(facts)}\nUser-entered scope answers (not document-verified): ${JSON.stringify(context.scopeAnswers ?? null)}\nSeparate company and exhibit context (IDs retained): ${JSON.stringify(responseContext)}\nSource data: ${JSON.stringify(sources)}`},'{findings:[{statement,stance,sourceIds,supportingPassage}],unverified:string[],unanswered:string[],conflicts:string[]}',validEvaluation);
+  const responseContext={primaryDocument:context.primaryDocument ?? "",factEvidence:context.factEvidence ?? {},companyResponse:context.companyResponse ?? "",additionalDocuments:(context.additionalDocuments ?? []).map(({id,label,text,role})=>({id,label,text,role:role ?? "customer-record"}))};
+  const result=await llmJSON({system:SYSTEM,signal,maxTokens:3500,user:`Compare values in the primary document with source text, including points favoring the company. ${pack.evaluationPrompt}\nThe extracted values below are attributed to the supplied factEvidence document identities, which may be the primary record or a separate exhibit. Do not assume every sentence was written by the consumer; refer to the document and its exact excerpt. Scope answers are separate user-entered statements and are not confirmed by the documents; use them only as tentative context for scope, identify material conflicts with documents or the company response, and do not silently resolve them. The separately labeled company response, previous-company-reply documents and additional exhibits are contextual evidence; never attribute a company reply to the customer, and never treat a company claim as a verified fact. These documents and must never replace primary-document values. If evidence disagrees (especially on dates, amounts, or cancellation status), list the disagreement in conflicts and preserve each source's identity. Use exact string source IDs (s1, s2 etc), never numeric IDs. Each finding needs statement, stance (favors-customer|favors-company|unclear), sourceIds (string array), supportingPassage (one exact continuous quotation present in EVERY referenced source). Do not call a source applicable solely because it mentions a similar dispute. Keep unsupported hypotheses in unverified; missing facts and applicability questions in unanswered; conflicting source claims in conflicts. Only report a conflict when two statements make incompatible assertions about the SAME event or fact. A cancellation attempt, renewal, effective termination and reply are distinct events. An attempted cancellation and an active account can both be true; put uncertainty about completion in unanswered, not conflicts. A later confirmation may resolve a previously unknown effective date without proving the earlier cancellation attempt completed. Read the supplied exhibit before asking for that same information again. Distinguish what the exhibit states from whether it is independently verified. Return {findings,unverified,unanswered,conflicts,conflictPairs}. For a claimed effective-cancellation-date contradiction also return conflictPairs:[{event:"effective_cancellation_date",left:{documentId,quote},right:{documentId,quote}}]. Use document IDs primary, company-response, or the supplied exhibit ID; quote exact complete text. Do not convert dates or rewrite quotations. Unsupported conflicts remain unverified, not established. A cancellation attempt and an active account do not contradict each other.\nRecord values (extracted separately with document identities): ${JSON.stringify(facts)}\nUser-entered scope answers (not document-verified): ${JSON.stringify(context.scopeAnswers ?? null)}\nSeparate company and exhibit context (IDs retained): ${JSON.stringify(responseContext)}\nSource data: ${JSON.stringify(sources)}`},'{findings:[{statement,stance,sourceIds,supportingPassage}],unverified:string[],unanswered:string[],conflicts:string[]}',validEvaluation);
   const checkedConflicts = validatedDateConflicts(result.conflictPairs,[{id:'primary',text:context.primaryDocument ?? ''},{id:'company-response',text:context.companyResponse ?? ''},...(context.additionalDocuments ?? [])]);
   const findings=verifyFindings(result.findings,sources);
   return {...result,findings,unverified:[...result.unverified,...result.conflicts.map(item => `Unvalidated interpretation: ${item}`),...findings.filter(finding => !finding.verified).map(finding => finding.statement)],unanswered:[...new Set([...result.unanswered,'Confirm the policy version, location, dates, and eligibility conditions before relying on a finding.'])],conflicts:[...new Set([...checkedConflicts,...deterministicConflicts])]};
@@ -148,14 +119,16 @@ export async function draftLetter(
   facts:ExtractedFacts,findings:Finding[],compensation:CompensationResult,
   pack:{letterTemplate:string;escalationLadder:Record<string,string[]>},
   userName:string,desiredOutcome:string,language:string,replyDeadline:string,
-  sources:Source[]=[],signal?:AbortSignal,additionalDocuments:{label:string;text:string}[]=[],
+  sources:Source[]=[],signal?:AbortSignal,additionalDocuments:{label:string;text:string;role?:"record"|"previous-company-reply"}[]=[],
 ):Promise<{letter:string;citations:{id:number;title:string;url:string}[]}> {
   signal?.throwIfAborted();
   void compensation; void pack; void language;
   // Unreviewed applicability cannot authorize model-generated legal prose. Build
   // a factual request and quote only passages checked against the retained text.
   const literal=(value:string):string => value.replace(/\[(s?\d+)\]/gi,'［$1］');
-  const traceable=verifyFindings(findings,sources).filter(finding => finding.verified);
+  // Search previews may omit critical context. Only quote extracted page text;
+  // legacy sources without a retrieval type also remain in the review, not the draft.
+  const traceable=verifyFindings(findings,sources).filter(finding => finding.verified && finding.sourceIds.every(id => sources.find(source => source.id === id)?.retrieval === 'provider_extract'));
   const sourceIds=new Set(traceable.flatMap(finding => finding.sourceIds));
   const registry=sources.filter(source => sourceIds.has(source.id));
   const displayIDs=new Map(registry.map((source,index) => [source.id,index+1]));
@@ -171,7 +144,7 @@ export async function draftLetter(
   });
   const entries=Object.entries(facts).filter(([key,value]) => key!=='disputeSummary' && key!=='companyPosition' && value!==null && value!==undefined && value!=='' && (!Array.isArray(value) || value.length>0));
   const factualDetails=entries.map(([key,value]) => literal(`${factLabel(key)}: ${Array.isArray(value) ? value.join('; ') : String(value)}`)).join('\n');
-  const exhibits=additionalDocuments.slice(0,3).map((document,index)=>{
+  const exhibits=additionalDocuments.filter(document=>document.role!=="previous-company-reply").slice(0,3).map((document,index)=>{
     const normalized=document.text.replace(/\s+/g,' ').trim();
     const excerpt=normalized.length>640 ? normalized.slice(0,640).replace(/\s+\S*$/, '')+' […]' : normalized;
     return `Additional evidence provided (${literal(document.label || `Exhibit ${index + 1}`)}): “${literal(excerpt)}”`;
@@ -182,7 +155,7 @@ export async function draftLetter(
     'Subject: Request to review a disputed charge or service',
     'Dear Customer Support,',
     'Please review my concern about the charge or service described below.',
-    factualDetails ? `Information from my document:\n${factualDetails}` : '[Add the relevant dates, charge, and service details from your document.]',
+    factualDetails ? `Information from my records:\n${factualDetails}` : '[Add the relevant dates, charge, and service details from your document.]',
     ...(exhibits.length ? ['Additional evidence for review:',...exhibits,'Please explain how this document affects the objection and identify any remaining conditions.'] : []),
     `My requested outcome is: ${literal(desiredOutcome.trim()) || 'a fair review and resolution of the dispute'}.`,
     ...(quotations.length ? ['Published information for the company to clarify:',...quotations,'Please confirm whether this information applies to my case.'] : []),

@@ -5,6 +5,7 @@ export type CaseType = "flight-delay" | "subscription-cancel" | "surprise-bill";
 export type AnalysisStage = "extract" | "plan" | "research" | "rebuttal" | "evaluate" | "score" | "draft" | "escalate";
 export type AnalysisProgressEvent =
   | { type: "stage"; stage: AnalysisStage; phase: "started" | "completed" | "failed"; durationMs?: number }
+  | { type: "document-audit"; audit: import("./document-audit").DocumentAudit }
   | { type: "tool"; tool: string; summary: string; sourceIds: string[]; durationMs: number };
 
 export interface ExtractedFacts {
@@ -96,6 +97,7 @@ export interface EscalationStep {
 }
 
 export interface PipelineResult {
+  documentAudit?: import("./document-audit").DocumentAudit;
   reviewSummary?: import("./review-summary").ReviewSummary;
   facts: ExtractedFacts;
   factEvidence: Record<string, { documentId: string; label: string; excerpts: string[] }>;

@@ -113,9 +113,8 @@ test("all launch packs and scopes return cited factual letters and preserve conf
       assert.equal(result.findings[0].verified, true);
       assert.equal(result.findings[0].applicability, "unknown");
       assert.equal(result.score.rating, "weak");
-      assert.equal(result.letterCitations[0].url, "https://example.com/policy");
-      assert.match(result.letter, /\[1\]/);
-      assert.match(result.letter, /confirm whether this information applies/);
+      assert.deepEqual(result.letterCitations, []);
+      assert.doesNotMatch(result.letter, /Customers can request a review of disputed charges/);
       assert.equal(result.conflicts.length, 0);
       assert.ok(result.unverified.some(item => item.includes("different terms")));
       assert.equal(result.country, country);
@@ -175,7 +174,7 @@ test('investigation reserves a final turn after four source inspections', async 
     const tool_calls=calls===1 ? [1,2,3,4].map(n=>({id:`inspect-${n}`,type:'function',function:{name:'inspect_source',arguments:JSON.stringify({sourceId:'s1'})}})) : [{id:'finish',type:'function',function:{name:'finish_investigation',arguments:JSON.stringify({objections:[{hypothesis:'Policy may require confirmation',supportingPassage:'Cancellation needs confirmation.',sourceIds:['s1'],evidenceNeeded:['Confirmation']} ]})}}];
     return Response.json({choices:[{message:{tool_calls}}]});
   };
-  const result=await investigateObjections({facts:{company:'Example'},companyResponse:'Account active',country:'US',additionalDocuments:[],sources:[{id:'s1',title:'Policy',url:'https://example.com',snippet:'Cancellation needs confirmation.',retrievedAt:new Date().toISOString()}]});
+  const result=await investigateObjections({facts:{company:'Example'},companyResponse:'Account active',country:'US',officialCompanyDomain:'example.com',additionalDocuments:[],sources:[{id:'s1',title:'Policy',url:'https://example.com',snippet:'Cancellation needs confirmation.',retrievedAt:new Date().toISOString()}]});
   assert.equal(calls,2);
   assert.equal(result.objections.length,1);
   assert.equal(result.objections[0].status,'unresolved');
@@ -196,4 +195,97 @@ test('evaluation receives original excerpts and keeps later evidence separately 
   assert.match(prompt,/ORIGINAL REQUEST OCTOBER EIGHT/);
   assert.match(prompt,/TERMINATION OCTOBER TWELVE/);
   assert.match(prompt,/factEvidence/);
+});
+
+test('draft never quotes a search snippet as a policy passage', async () => {
+  const {draftLetter}=await import('../src/lib/llm');
+  const source={id:'s1',url:'https://example.com/policy',title:'Policy',snippet:'A full refund is guaranteed for every subscriber.',retrievedAt:'2026-10-29',retrieval:'search_snippet' as const};
+  const finding={id:'f1',statement:'Refund guaranteed',stance:'favors-customer' as const,sourceIds:['s1'],supportingPassage:source.snippet,verified:true};
+  const result=await draftLetter({},[finding],{}, {letterTemplate:'',escalationLadder:{}},'Alex','a review','English','14 days',[source]);
+  assert.doesNotMatch(result.letter,/A full refund is guaranteed/);
+  assert.deepEqual(result.citations,[]);
+});
+
+test('workspace extracts uploaded record facts while retaining each document identity', async () => {
+  process.env.NEBIUS_API_KEY='test';
+  global.fetch=async()=>Response.json({choices:[{message:{content:JSON.stringify({company:'Example',currency:'USD',disputedAmount:40,companyPosition:[]})}}]});
+  const {extractWorkspaceRecords}=await import('../src/lib/workspace-extract');
+  const result=await extractWorkspaceRecords([{id:'receipt',label:'Receipt.txt',text:'Example charged USD 40.'}],getPack('subscription-cancel')!);
+  assert.equal(result.facts.company,'Example');
+  assert.equal(result.evidence.company.documentId,'receipt');
+  assert.equal(result.evidence.company.label,'Receipt.txt');
+});
+
+test('document audit separates the company reply from attributed record facts when web research is unavailable', async () => {
+  const {buildDocumentAudit}=await import('../src/lib/document-audit');
+  const audit=buildDocumentAudit({facts:{company:'Example'},factEvidence:{company:{documentId:'receipt',label:'Receipt',excerpts:['Example']}},companyResponse:'We cannot refund the fee.'});
+  assert.deepEqual(audit.records,[{label:'Company',value:'Example',documentId:'receipt',documentLabel:'Receipt',excerpt:'Example'}]);
+  assert.equal(audit.companyReply,'We cannot refund the fee.');
+});
+
+test('different charge and refund amounts are not automatically conflicting', async () => {
+  const {evaluateFindings}=await import('../src/lib/llm');
+  const result=await evaluateFindings({amount:288,currency:'USD'},[],{evaluationPrompt:'Review'},undefined,{companyResponse:'We offered a partial refund of USD 89.',factEvidence:{amount:{documentId:'primary',label:'Receipt',excerpts:['USD 288']}}});
+  assert.deepEqual(result.conflicts,[]);
+});
+
+test('workspace research triggers only for a stated policy or procedure question', async () => {
+  const {workspaceResearchNeeded}=await import('../src/lib/query');
+  assert.equal(workspaceResearchNeeded('The company charged me twice.','We corrected the duplicate charge.'),false);
+  assert.equal(workspaceResearchNeeded('I requested a refund.','Our terms say no refund.'),true);
+  assert.equal(workspaceResearchNeeded('Where can I file a complaint?',''),true);
+});
+
+test('workspace emits attributed document audit before research and skips irrelevant web searches', async () => {
+  process.env.NEBIUS_API_KEY='test';
+  let searches=0;
+  global.fetch=async input=>{
+    if (String(input).includes('tavily')) { searches++; return Response.json({results:[]}); }
+    return Response.json({choices:[{message:{content:JSON.stringify({company:'Example',amount:40,companyPosition:[]})}}]});
+  };
+  const events:import('../src/lib/types').AnalysisProgressEvent[]=[];
+  const result=await runPipeline({documentText:'Example charged 40 twice.',pack:getPack('surprise-bill')!,country:'US',workspaceMode:true,onProgress:event=>events.push(event)});
+  const early=events.find(event=>event.type==='document-audit');
+  assert.ok(early && early.type==='document-audit' && early.audit.records.some(record=>record.value==='Example'));
+  assert.equal(searches,0);
+  assert.equal(result.sources.length,0);
+});
+
+test('workspace record extraction contributes attributed facts alongside a typed account', async () => {
+  process.env.NEBIUS_API_KEY='test';
+  const {parseCaseRequest}=await import('../src/lib/request');
+  const payload=parseCaseRequest({documentText:'I was charged twice.',packId:'surprise-bill',country:'US',intent:'first-complaint',workspaceDocuments:[{id:'receipt',label:'Bill.txt',role:'record',text:'Example billed USD 40.'}]});
+  global.fetch=async (_input,init)=>{
+    const body=String(init?.body);
+    const data=body.includes('Example billed') ? {company:'Example',amount:40,currency:'USD',companyPosition:[]} : {company:null,amount:null,currency:null,companyPosition:[]};
+    return Response.json({choices:[{message:{content:JSON.stringify(data)}}]});
+  };
+  const result=await runPipeline({...payload,pack:getPack(payload.packId)!});
+  assert.equal(result.facts.company,'Example');
+  assert.equal(result.factEvidence.company.documentId,'receipt');
+  assert.equal(result.documentAudit?.records.find(record=>record.documentId==='receipt')?.documentLabel,'Bill.txt');
+});
+
+test('draft excludes earlier company replies from customer-provided supporting evidence', async () => {
+  const {draftLetter}=await import('../src/lib/llm');
+  const result=await draftLetter({},[],{}, {letterTemplate:'',escalationLadder:{}},'Alex','a review','English','14 days',[],undefined,[{label:'Earlier company reply',text:'Our earlier denial is correct.',role:'previous-company-reply'},{label:'Receipt',text:'Amount: USD 40.'}]);
+  assert.doesNotMatch(result.letter,/Our earlier denial is correct/);
+  assert.match(result.letter,/Amount: USD 40/);
+});
+
+test('a document-only review warns when company reply has not been compared', async () => {
+  process.env.NEBIUS_API_KEY='test';
+  global.fetch=async()=>Response.json({choices:[{message:{content:JSON.stringify({company:'Example',amount:40,companyPosition:[]})}}]});
+  const result=await runPipeline({documentText:'Example charged 40 twice.',companyResponse:'We have corrected that.',pack:getPack('surprise-bill')!,country:'US',workspaceMode:true});
+  assert.ok(result.warnings.some(warning=>/company.*not.*compared/i.test(warning)));
+});
+
+test('unrelated company policy cannot be presented as the disputed company policy', async () => {
+  process.env.NEBIUS_API_KEY='test';
+  const {investigateObjections}=await import('../src/lib/rebuttal');
+  global.fetch=async()=>Response.json({choices:[{message:{tool_calls:[{id:'finish',type:'function',function:{name:'finish_investigation',arguments:JSON.stringify({objections:[{hypothesis:'Example Streaming requires a 30 day notice.',supportingPassage:'Cancel at least 30 days in advance.',sourceIds:['s1'],evidenceNeeded:[]}]})}}]}}]});
+  const result=await investigateObjections({facts:{company:'Example Streaming'},companyResponse:'We decline.',country:'US',additionalDocuments:[],sources:[{id:'s1',title:'Other gym',url:'https://other-gym.example/terms',snippet:'Cancel at least 30 days in advance.',retrievedAt:'2026-10-29'}]});
+  assert.equal(result.objections[0].status,'unsupported');
+  assert.doesNotMatch(result.objections[0].hypothesis,/Example Streaming requires/);
+  assert.deepEqual(result.objections[0].sourceIds,[]);
 });
