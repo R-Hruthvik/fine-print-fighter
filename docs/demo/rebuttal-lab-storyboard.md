@@ -1,5 +1,7 @@
 # Rebuttal Lab demo storyboard
 
+> Superseded October 28: use [the current production plan](demo-production-plan.md) and [draft narration](demo-narration.md). The provider claims below are historical intentions, not verified Nebius usage.
+
 Status: pre-production script. The live model and its output have not been recorded or validated yet. The opening uses the explicitly offline walkthrough; the live provider segment must follow and must use actual model and research results. Keep the filmed demo under three minutes and make the central value visible within the first 30 seconds.
 
 ## Main path (about 80 seconds)
