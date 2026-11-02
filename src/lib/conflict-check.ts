@@ -79,7 +79,7 @@ export function validatedAmountConflicts(primaryText: string, supportingDocument
   // Only explicitly identified customer records can extend the comparison set.
   // The current company response is an eligible counterpart, as are other receipts.
   const customerRecords = supportingDocuments.filter(document => document.role === 'customer-record');
-  const companyReplies = supportingDocuments.filter(document => document.role === 'company-reply');
+  const companyReplies = supportingDocuments.filter(document => document.role === 'company-reply' || document.role === 'previous-company-reply');
   for (const receipt of customerRecords) {
     for (const company of companyReplies) compare(receipt, company);
   }

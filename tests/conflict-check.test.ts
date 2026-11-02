@@ -99,6 +99,18 @@ test('customer-record receipt is compared with company reply even when primary n
  assert.match(result.conflicts[0],/Company reply \[company-answer-9\] states “On 2026-10-08 the charge was USD 400, transaction reference TX-1842\.”/);
 });
 
+test('customer-record receipt is compared with an explicitly typed previous company reply',async()=>{
+ const receipt='On 2026-10-08 the charge was USD 40, transaction reference TX-1842.';
+ const previousReply='On 2026-10-08 the charge was USD 400, transaction reference TX-1842.';
+ const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
+  primaryDocument:'I dispute a subscription charge.',
+  additionalDocuments:[{id:'receipt-a',label:'Receipt A',role:'customer-record',text:receipt},{id:'reply-old-6',label:'Earlier company reply',role:'previous-company-reply',text:previousReply}],
+ });
+ assert.equal(result.conflicts.length,1);
+ assert.match(result.conflicts[0],/Receipt A \[receipt-a\] states “On 2026-10-08 the charge was USD 40, transaction reference TX-1842\.”/);
+ assert.match(result.conflicts[0],/Earlier company reply \[reply-old-6\] states “On 2026-10-08 the charge was USD 400, transaction reference TX-1842\.”/);
+});
+
 test('receipt comparisons fail closed when their explicit role is missing',async()=>{
  const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
   primaryDocument:'I dispute a subscription charge.',
