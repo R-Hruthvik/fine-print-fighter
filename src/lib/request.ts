@@ -28,7 +28,7 @@ export function parseCaseRequest(input: unknown) {
     if (typeof doc.id !== "string" || !/^[a-zA-Z0-9_-]{1,40}$/.test(doc.id) || typeof doc.label !== "string" || !doc.label.trim() || doc.label.length > 100 || typeof doc.text !== "string" || !doc.text.trim()) throw new RequestError(400, "INVALID_REQUEST", "Each additional document must include a valid ID, label, and text.");
     if (doc.id === "primary-document" || doc.id === "company-response") throw new RequestError(400, "INVALID_REQUEST", "Additional evidence IDs cannot use reserved primary or company-response IDs.");
     const role = doc.role === undefined ? "unknown" : doc.role;
-    if (!["customer-record", "previous-company-reply", "unknown"].includes(String(role))) throw new RequestError(400, "INVALID_REQUEST", "Additional evidence role must be customer-record, previous-company-reply, or unknown.");
+    if (typeof role !== "string" || !["customer-record", "previous-company-reply", "unknown"].includes(role)) throw new RequestError(400, "INVALID_REQUEST", "Additional evidence role must be customer-record, previous-company-reply, or unknown.");
     if (additionalIds.has(doc.id)) throw new RequestError(400, "INVALID_REQUEST", "Additional evidence document IDs must be unique.");
     additionalIds.add(doc.id);
     if (doc.text.length > 12000) throw new RequestError(413, "INPUT_TOO_LARGE", "An additional evidence document exceeds 12,000 characters.");

@@ -75,6 +75,9 @@ test("additional document roles accept only explicit values and default old clie
   assert.equal((parseCaseRequest({ ...base, additionalDocuments: [{ ...base.additionalDocuments[0], role: "previous-company-reply" }] }).additionalDocuments[0] as { role?: string }).role, "previous-company-reply");
   assert.equal((parseCaseRequest({ ...base, additionalDocuments: [{ id: "old-client", label: "Extra", text: "Context" }] }).additionalDocuments[0] as { role?: string }).role, "unknown");
   assert.throws(() => parseCaseRequest({ ...base, additionalDocuments: [{ ...base.additionalDocuments[0], role: "primary-record" }] }), /role/i);
+  for (const role of [["customer-record"], null, { value: "customer-record" }, 3]) {
+    assert.throws(() => parseCaseRequest({ ...base, additionalDocuments: [{ ...base.additionalDocuments[0], role }] }), /role/i);
+  }
   assert.throws(() => parseCaseRequest({ ...base, additionalDocuments: [{ ...base.additionalDocuments[0], id: "primary-document" }] }), /reserved/i);
   assert.throws(() => parseCaseRequest({ ...base, additionalDocuments: [{ ...base.additionalDocuments[0], id: "company-response" }] }), /reserved/i);
 });

@@ -1,7 +1,7 @@
 import { containsExactPassage } from './exact-passage';
 
 export type ConflictDocument = { id: string; text: string };
-export type AmountConflictDocument = { id: string; label: string; text: string };
+export type AmountConflictDocument = { id: string; label: string; text: string; role?: string };
 
 type MonetaryStatement = {
   date: string;
@@ -62,15 +62,29 @@ function statements(text: string): MonetaryStatement[] {
 
 /** Only reports differing amounts when both retained passages identify one same monetary event. */
 export function validatedAmountConflicts(primaryText: string, supportingDocuments: AmountConflictDocument[], primaryIdentity: { id: string; label: string } = { id: "primary", label: "Primary document" }): string[] {
-  const primaryStatements = statements(primaryText);
   const conflicts = new Set<string>();
-  for (const document of supportingDocuments) {
-    for (const primary of primaryStatements) {
-      for (const supporting of statements(document.text)) {
-        if (primary.date !== supporting.date || primary.reference !== supporting.reference || primary.event !== supporting.event || primary.currency !== supporting.currency || primary.amount === supporting.amount) continue;
-        conflicts.add(`Amount conflict: ${primaryIdentity.label} [${primaryIdentity.id}] states “${primary.quote}”; ${document.label} [${document.id}] states “${supporting.quote}”. Review the original documents; neither value is independently verified.`);
+  const primary = { ...primaryIdentity, text: primaryText, role: 'primary-record' };
+  const compare = (left: AmountConflictDocument, right: AmountConflictDocument) => {
+    if (left.id === right.id) return;
+    for (const leftStatement of statements(left.text)) {
+      for (const rightStatement of statements(right.text)) {
+        if (leftStatement.date !== rightStatement.date || leftStatement.reference !== rightStatement.reference || leftStatement.event !== rightStatement.event || leftStatement.currency !== rightStatement.currency || leftStatement.amount === rightStatement.amount) continue;
+        conflicts.add(`Amount conflict: ${left.label} [${left.id}] states “${leftStatement.quote}”; ${right.label} [${right.id}] states “${rightStatement.quote}”. Review the original documents; neither value is independently verified.`);
       }
     }
+  };
+  // Preserve legacy primary-to-exhibit comparisons, including untyped extras.
+  for (const document of supportingDocuments) compare(primary, document);
+
+  // Only explicitly identified customer records can extend the comparison set.
+  // The current company response is an eligible counterpart, as are other receipts.
+  const customerRecords = supportingDocuments.filter(document => document.role === 'customer-record');
+  const companyReplies = supportingDocuments.filter(document => document.role === 'company-reply' || document.role === 'previous-company-reply');
+  for (const receipt of customerRecords) {
+    for (const company of companyReplies) compare(receipt, company);
+  }
+  for (let i = 0; i < customerRecords.length; i++) {
+    for (let j = i + 1; j < customerRecords.length; j++) compare(customerRecords[i], customerRecords[j]);
   }
   return [...conflicts];
 }
