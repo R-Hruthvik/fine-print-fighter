@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isValidCaseAnalysis, validateSaveCase } from "../src/lib/saved-cases";
+import { isValidCaseAnalysis, restoreSavedCaseDocuments, validateSaveCase } from "../src/lib/saved-cases";
 import type { PipelineResult } from "../src/lib/types";
 import { normalizeScopeAnswers } from "../src/lib/scope-answers";
 
@@ -35,6 +35,53 @@ test("saved-case validation accepts only supported packs, jurisdictions, and non
   assert.equal(validateSaveCase(saveInput({ jurisdiction: "UK" })), false);
   assert.equal(validateSaveCase(saveInput({ jurisdiction: "EU" })), false);
   assert.equal(validateSaveCase(saveInput({ documents: [{ label: "Primary document", text: " " }, { label: "Company response", text: "Reply" }] })), false);
+});
+
+test("saved document metadata preserves stable IDs and explicit roles through restore", () => {
+  const documents = [
+    { id: "primary-document", role: "primary-record", label: "Original bill", text: "Primary text" },
+    { id: "company-response", role: "company-reply", label: "Company email", text: "Reply text" },
+    { id: "receipt-2026", role: "customer-record", label: "Receipt", text: "USD 40" },
+    { id: "context-2026", role: "unknown", label: "Notes", text: "Context only" },
+  ];
+  assert.equal(validateSaveCase(saveInput({ documents })), true);
+  assert.deepEqual(restoreSavedCaseDocuments(documents), {
+    primaryDocument: documents[0],
+    companyReply: documents[1],
+    additionalDocuments: documents.slice(2),
+  });
+});
+
+test("legacy reserved labels restore their roles while arbitrary extras remain unknown", () => {
+  const restored = restoreSavedCaseDocuments([
+    { label: "Primary document", text: "Primary text" },
+    { label: "Company response", text: "Reply text" },
+    { label: "Customer receipt", text: "USD 40" },
+  ]);
+  assert.equal(restored?.primaryDocument.id, "primary-document");
+  assert.equal(restored?.companyReply?.id, "company-response");
+  assert.deepEqual(restored?.additionalDocuments, [{ id: "saved-unknown-1", role: "unknown", label: "Customer receipt", text: "USD 40" }]);
+});
+
+test("saved document metadata rejects duplicate, reserved collisions, ambiguous roles, and oversized text", () => {
+  const validDocuments = saveInput().documents as { label: string; text: string }[];
+  assert.equal(validateSaveCase(saveInput({ documents: [
+    { id: "same", role: "primary-record", label: "Primary", text: "Ticket" },
+    { id: "company-response", role: "company-reply", label: "Reply", text: "Reply" },
+    { id: "same", role: "unknown", label: "Extra", text: "Extra" },
+  ] })), false);
+  assert.equal(restoreSavedCaseDocuments([
+    { id: "primary-document", role: "unknown", label: "Context", text: "Context" },
+    ...validDocuments,
+  ]), null);
+  assert.equal(restoreSavedCaseDocuments([
+    { id: "primary-a", role: "primary-record", label: "A", text: "A" },
+    { id: "primary-b", role: "primary-record", label: "B", text: "B" },
+  ]), null);
+  assert.equal(validateSaveCase(saveInput({ documents: [
+    { id: "primary-document", role: "primary-record", label: "Primary", text: "x".repeat(30001) },
+    { id: "company-response", role: "company-reply", label: "Reply", text: "Reply" },
+  ] })), false);
 });
 
 test("saved-case validation keeps explicit scope-answer provenance while accepting older analyses", () => {
