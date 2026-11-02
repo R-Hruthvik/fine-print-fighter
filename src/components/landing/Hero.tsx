@@ -33,6 +33,8 @@ export default function Hero() {
           alt=""
           width={1024}
           height={1024}
+          sizes="(max-width: 1310px) 58vw, 760px"
+          loading="eager"
         />
         <span className={styles.watermark}>&sect;</span>
       </div>
