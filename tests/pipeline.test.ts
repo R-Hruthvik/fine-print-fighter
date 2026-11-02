@@ -314,3 +314,34 @@ test("a supporting currency cannot be paired with an uncategorized primary amoun
   assert.equal(result.compensation.disputedAmount, undefined);
   assert.ok(result.warnings.some(warning => /kept separate/i.test(warning)));
 });
+
+test("later supporting records cite the earlier record that supplied an existing fact and currency", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  const extracts = new Map([
+    ["Primary invoice", { company: "Example", amount: null, currency: null }],
+    ["Receipt A", { company: null, amount: 40, currency: "USD" }],
+    ["Receipt B", { company: null, amount: 50, currency: "EUR" }],
+  ]);
+  global.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body));
+    const prompt = String(body.messages[1].content);
+    if (!prompt.includes("Extract only stated facts")) return Response.json({ choices: [{ message: { content: JSON.stringify({ findings: [], unverified: [], unanswered: [], conflicts: [] }) } }] });
+    const name = [...extracts.keys()].find(candidate => prompt.includes(candidate));
+    const facts = name ? extracts.get(name) : undefined;
+    return Response.json({ choices: [{ message: { content: JSON.stringify(facts ?? { company: null, amount: null, currency: null }) } }] });
+  };
+  const result = await runPipeline({
+    documentText: "Primary invoice.", primaryDocumentId: "invoice-original", primaryDocumentLabel: "Original invoice",
+    pack: getPack("surprise-bill")!, country: "US",
+    additionalDocuments: [
+      { id: "receipt-a", role: "customer-record", label: "Receipt A", text: "Receipt A: USD 40" },
+      { id: "receipt-b", role: "customer-record", label: "Receipt B", text: "Receipt B: EUR 50" },
+    ],
+  });
+  assert.equal(result.facts.amount, 40);
+  assert.equal(result.factEvidence.amount?.documentId, "receipt-a");
+  assert.equal(result.factEvidence.currency?.documentId, "receipt-a");
+  assert.ok(result.warnings.some(warning => warning.includes("Receipt A [receipt-a]") && warning.includes("Receipt B [receipt-b]") && /amount/i.test(warning)));
+  assert.ok(result.warnings.some(warning => warning.includes("Receipt A [receipt-a]") && warning.includes("Receipt B [receipt-b]") && /currency/i.test(warning)));
+});

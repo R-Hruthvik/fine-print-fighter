@@ -117,9 +117,14 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     const facts=primary.facts;
     const factEvidence=primary.evidence;
     const factConflicts:string[]=[];
+    const sourceLabel=(key:string) => {
+      const source=factEvidence[key];
+      return source ? `${source.label} [${source.documentId}]` : `a document with unavailable source attribution for ${key}`;
+    };
     for (const document of additionalDocuments.filter(item=>item.role==="customer-record").slice(0,3)) {
       const supporting=await extractFacts(document.text,primaryPack,signal,true,{id:document.id,label:document.label});
       const primaryCurrency=facts.currency;
+      const primaryCurrencySource=sourceLabel("currency");
       const supportingCurrency=supporting.facts.currency;
       const primaryHasMonetaryValue=[...monetaryFactKeys].some(key=>!unknown(facts[key]));
       for (const key of primaryPack.extractionSchema) {
@@ -127,18 +132,19 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
         if (unknown(value)) continue;
         if (unknown(facts[key])) {
           if (key==="currency" && unknown(primaryCurrency) && primaryHasMonetaryValue) {
-            factConflicts.push(`currency: ${document.label} [${document.id}] states ${String(value)}, while a monetary value in the primary document has no currency. The currencies were kept separate.`);
+            const monetaryKey=[...monetaryFactKeys].find(candidate=>!unknown(facts[candidate]));
+            factConflicts.push(`currency: ${document.label} [${document.id}] states ${String(value)}, while ${monetaryKey ? sourceLabel(monetaryKey) : "an earlier document"} has a monetary value with no currency. The currencies were kept separate.`);
             continue;
           }
           if (monetaryFactKeys.has(key) && (unknown(supportingCurrency) || !unknown(primaryCurrency) && supportingCurrency !== primaryCurrency)) {
-            factConflicts.push(`${key}: ${document.label} [${document.id}] states ${String(value)} in ${String(supportingCurrency ?? "an unstated currency")}; the primary document states ${String(primaryCurrency ?? "no currency")}. The amount was left unresolved to avoid combining values from different currencies.`);
+            factConflicts.push(`${key}: ${document.label} [${document.id}] states ${String(value)} in ${String(supportingCurrency ?? "an unstated currency")}; ${primaryCurrencySource} states ${String(primaryCurrency ?? "no currency")}. The amount was left unresolved to avoid combining values from different currencies.`);
             continue;
           }
           facts[key]=value;
           const evidence=supporting.evidence[key];
           if (evidence) factEvidence[key]=evidence;
         } else if (JSON.stringify(facts[key])!==JSON.stringify(value)) {
-          factConflicts.push(`${key}: the primary document states “${String(facts[key])}”; ${document.label} [${document.id}] states “${String(value)}”. Keep both statements in context; neither value is independently verified.`);
+          factConflicts.push(`${key}: ${sourceLabel(key)} states “${String(facts[key])}”; ${document.label} [${document.id}] states “${String(value)}”. Keep both statements in context; neither value is independently verified.`);
         }
       }
     }
