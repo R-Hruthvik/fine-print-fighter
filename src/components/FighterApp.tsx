@@ -103,6 +103,8 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [pendingSaveReady, setPendingSaveReady] = useState(false);
   const [stage, setStage] = useState<1 | 2 | 3>(1);
+  const stageHeadingRef = useRef<HTMLHeadingElement>(null);
+  const previousStageRef = useRef(stage);
   const fileRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<AbortController | null>(null);
   const resultHeading = useRef<HTMLDivElement>(null);
@@ -114,6 +116,12 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
 
   useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => {
+    if (previousStageRef.current !== stage) {
+      previousStageRef.current = stage;
+      stageHeadingRef.current?.focus();
+    }
+  }, [stage]);
+  useEffect(() => {
     if (result) resultHeading.current?.focus();
   }, [result]);
 
@@ -124,6 +132,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
   function continueToDocuments() {
     if (!CASE_TYPES.some((pack) => pack.id === form.caseType) || !COUNTRIES.some((country) => country.code === form.country)) {
       setError("Choose a supported jurisdiction and complaint type.");
+      document.getElementById(CASE_TYPES.some((pack) => pack.id === form.caseType) ? "country" : "case-type")?.focus();
       return;
     }
     setError(null);
@@ -135,9 +144,9 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
   const [factsConfirmed, setFactsConfirmed] = useState(false);
   async function reviewCase() {
     const validation = validateDocument(form.documentText);
-    if (validation) { setError(validation); return; }
-    if (form.intent === "review-reply" && !form.companyResponse.trim()) { setError("Add the company’s actual reply or explanation before reviewing."); return; }
-    if (form.companyResponse.length > 12_000) { setError("The company response exceeds 12,000 characters. Shorten it before reviewing."); return; }
+    if (validation) { setError(validation); document.getElementById("document-text")?.focus(); return; }
+    if (form.intent === "review-reply" && !form.companyResponse.trim()) { setError("Add the company’s actual reply or explanation before reviewing."); document.getElementById("company-response")?.focus(); return; }
+    if (form.companyResponse.length > 12_000) { setError("The company response exceeds 12,000 characters. Shorten it before reviewing."); document.getElementById("company-response")?.focus(); return; }
     setError(null);
     setPreparing(true);
     setFactsConfirmed(false);
@@ -253,6 +262,8 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     setAdditionalDocuments([]);
     setExhibitRemovalPending(false);
     setSaveRequested(false);
+    setSaveCompanyName(null);
+    setSaveCompanyNameEdited(false);
     setSaveMessage(null);
     clearPendingCaseSave();
     setPendingSaveReady(false);
@@ -338,7 +349,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
             <legend className="sr-only">Case details</legend>
             <div className="intake-stepper" aria-label={`Step ${stage} of 3`}><span className={stage >= 1 ? "active" : ""}>01 <b>Case details</b></span><span className={stage >= 2 ? "active" : ""}>02 <b>Documents</b></span><span className={stage >= 3 ? "active" : ""}>03 <b>Review</b></span></div>
             {stage === 1 ? <>
-            <p className="eyebrow intake-stage-label">Step 1 · Choose your complaint</p>
+            <h3 ref={stageHeadingRef} tabIndex={-1} className="eyebrow intake-stage-label">Step 1 · Choose your complaint</h3>
             <div className="form-grid intake-choice-grid">
               <label className="full-width" htmlFor="review-intent">What would you like help with?<select id="review-intent" value={form.intent} onChange={event => update('intent',event.target.value as FormState['intent'])}><option value="review-reply">Review a company’s reply</option><option value="first-complaint">Make my first complaint</option></select></label><label htmlFor="company-name">Company name <span className="required-note">Optional</span><input id="company-name" list="company-options" value={form.companyName} maxLength={200} onChange={(event) => update("companyName", event.target.value)} placeholder="Type any company name" /><datalist id="company-options">{COMPANIES.map((company) => <option key={company.slug} value={company.name} />)}</datalist><span className="field-hint">{hasCompanyCoverage ? `Reviewed sources available for this complaint and jurisdiction (checked ${matchedCompany?.reviewedOn}); source coverage does not establish eligibility.` : matchedCompany ? `${matchedCompany.name} has a directory entry, but not for this complaint and jurisdiction. Company-specific research may be limited.` : "Unlisted companies are welcome; company-specific research may be limited."}</span></label>
               <label htmlFor="country">Research jurisdiction<select id="country" value={form.country} onChange={(event) => update("country", event.target.value as Country)}>{COUNTRIES.map((country) => <option key={country.code} value={country.code}>{country.label}</option>)}</select></label>
@@ -353,7 +364,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
             <div className="submission-row"><button className="primary-button" type="button" onClick={continueToDocuments}>Continue to documents <span aria-hidden="true">→</span></button></div>
             </> : null}
             {stage === 2 ? <>
-            <p className="eyebrow intake-stage-label">Step 2 · Add the record</p>
+            <h3 ref={stageHeadingRef} tabIndex={-1} className="eyebrow intake-stage-label">Step 2 · Add the record</h3>
             <div className="document-label"><label htmlFor="document-text">Document text <span className="required-note">Required</span></label><button className="text-button" type="button" onClick={() => fileRef.current?.click()}>Upload .txt / .md <span aria-hidden="true">↗</span></button></div>
             <input ref={fileRef} type="file" accept=".txt,.md,text/plain,text/markdown" className="sr-only" tabIndex={-1} aria-label="Upload a text document" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
             <textarea id="document-text" className="document-input" value={form.documentText} onChange={(event) => { update("documentText", event.target.value); setFileName(null); }} aria-describedby="document-hint document-count" placeholder="Paste the bill, notice, or email here. Include dates, charges, and the company’s explanation where available." required />
@@ -361,12 +372,13 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
             <label htmlFor="company-response" className="company-response-label">Company’s reply <span className="required-note">{form.intent === "review-reply" ? "Required" : "Optional"}</span></label>
             <textarea id="company-response" className="company-response-input" value={form.companyResponse} onChange={(event) => update("companyResponse", event.target.value)} aria-describedby="company-response-hint company-response-count" placeholder="If you have received a reply, paste it here. The Rebuttal Lab will investigate its explanation and identify what evidence is missing." required={form.intent === "review-reply"} />
             <div className="company-response-meta"><p className="field-hint" id="company-response-hint">Use the exact reply where possible. An explanation is not proof that the company is right.</p><span id="company-response-count" className={`character-counter ${form.companyResponse.length > 12_000 ? "over-limit" : ""}`}>{form.companyResponse.length.toLocaleString("en-IN")} / 12,000 characters</span></div>
-            <div className="sample-row"><span>Just looking around?</span><button className="text-button" type="button" onClick={() => { setForm({ ...DEFAULT_FORM, caseType: "subscription-cancel", documentText: SAMPLE, companyResponse: "Your subscription remained active through the next billing date. Our records show that cancellation was not completed before the renewal. We cannot refund the charge." }); setIsFictionalSample(true); setFileName(null); setError(null); setNotice("Fictional sample loaded. The company reply is invented; research results are retrieved live."); }}>Try a fictional example <span aria-hidden="true">→</span></button></div>
+            <p className="privacy-note">Before checking your facts, your document text and any company reply are sent to configured processing providers. You can use this tool as a guest; neither is sent to the company.</p>
+            <div className="sample-row"><span>Just looking around?</span><button className="text-button" type="button" onClick={() => { setForm({ ...DEFAULT_FORM, caseType: "subscription-cancel", documentText: SAMPLE, companyResponse: "Your subscription remained active through the next billing date. Our records show that cancellation was not completed before the renewal. We cannot refund the charge." }); setSaveCompanyName(null); setSaveCompanyNameEdited(false); setIsFictionalSample(true); setFileName(null); setError(null); setNotice("Fictional sample loaded. The company reply is invented; research results are retrieved live."); }}>Try a fictional example <span aria-hidden="true">→</span></button></div>
             <details className="preferences"><summary>Personalize your letter <span>Optional</span></summary><div className="form-grid preference-fields"><label htmlFor="user-name">Your name<input id="user-name" autoComplete="name" value={form.userName} maxLength={200} onChange={(event) => update("userName", event.target.value)} placeholder="Or leave a placeholder" /></label><label htmlFor="letter-language">Letter language<input id="letter-language" value="English" readOnly aria-describedby="language-hint" /><span className="field-hint" id="language-hint">English is supported in this version.</span></label><label htmlFor="desired-outcome" className="full-width">What would resolve this?<input id="desired-outcome" value={form.desiredOutcome} maxLength={2000} onChange={(event) => update("desiredOutcome", event.target.value)} placeholder="For example, cancel my plan and review the latest charge" /></label><label htmlFor="reply-deadline" className="full-width">Requested reply period<input id="reply-deadline" value={form.replyDeadline} maxLength={100} onChange={(event) => update("replyDeadline", event.target.value)} aria-describedby="reply-hint" /><span className="field-hint" id="reply-hint">A requested response time, not an established legal deadline.</span></label></div></details>
             <div className="submission-row"><button className="secondary-button" type="button" onClick={() => { setError(null); setStage(1); }}>Back</button><button className="primary-button" type="button" disabled={preparing} onClick={() => void reviewCase()}>{preparing ? "Reading your record…" : "Check my facts"} <span aria-hidden="true">→</span></button></div>
             </> : null}
             {stage === 3 ? <>
-              <p className="eyebrow intake-stage-label">Step 3 · Check before analysis</p>
+              <h3 ref={stageHeadingRef} tabIndex={-1} className="eyebrow intake-stage-label">Step 3 · Check before analysis</h3>
               <section className="fact-confirmation"><h3>Did we understand your record?</h3><p>Check these extracted statements. If something is wrong, go back and clarify the document text before continuing. These statements are not independently verified.</p><dl>{Object.entries(preparedFacts ?? {}).filter(([key]) => !['companyPosition','disputeSummary'].includes(key)).map(([key,value]) => <div key={key}><dt>{factLabel(key)}</dt><dd>{Array.isArray(value) ? value.join(' · ') : String(value ?? 'Not stated')}</dd></div>)}</dl><label><input type="checkbox" checked={factsConfirmed} onChange={event => setFactsConfirmed(event.target.checked)} /> I checked these details against my record.</label></section><div className="intake-review"><dl><div><dt>Company</dt><dd>{form.companyName || "Not listed"}</dd></div><div><dt>Research jurisdiction</dt><dd>{COUNTRIES.find((country) => country.code === form.country)?.label}</dd></div><div><dt>Complaint type</dt><dd>{CASE_TYPES.find((pack) => pack.id === form.caseType)?.label}</dd></div><div><dt>Scope answers provided</dt><dd>{Object.values(form.scopeAnswers).filter(Boolean).length} · optional details</dd></div><div><dt>Primary document</dt><dd>{fileName || `${form.documentText.length.toLocaleString("en-IN")} characters pasted`}</dd></div><div><dt>Company response</dt><dd>{form.companyResponse.length.toLocaleString("en-IN")} characters</dd></div><div><dt>Additional exhibits</dt><dd>{additionalDocuments.length}</dd></div></dl></div>
               <p className="privacy-note">Your text is sent to the configured analysis and research providers. Guest cases are not saved. After analysis, you can choose whether to save the full case to a private account.</p>
               <div className="submission-row"><button className="secondary-button" type="button" onClick={() => { setError(null); setStage(2); }}>Back to documents</button><button className="primary-button" type="submit" disabled={running || !factsConfirmed}>{running ? "Analysis in progress" : "Review my case"}<span aria-hidden="true">→</span></button></div>

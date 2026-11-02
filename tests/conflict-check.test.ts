@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {validatedDateConflicts} from '../src/lib/conflict-check';
+import {validatedAmountConflicts,validatedDateConflicts} from '../src/lib/conflict-check';
 import {evaluateFindings} from '../src/lib/llm';
 const left={documentId:'primary',quote:'The service ended on 2026-10-08.'};
 const right={documentId:'reply',quote:'The effective cancellation date is 2026-10-12.'};
@@ -202,4 +202,32 @@ test('overprecision and malformed grouping cannot be partially parsed as money',
   const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{primaryDocument,companyResponse});
   assert.deepEqual(result.conflicts,[]);
  }
+});
+
+test('monetary conflicts stop at twenty details and include one omission notice',()=>{
+ const primary=Array.from({length:30},(_,index)=>`2026-10-08 TX-${index+1} charge USD 40.`).join('\n');
+ const reply=Array.from({length:30},(_,index)=>`2026-10-08 TX-${index+1} charge USD 400.`).join('\n');
+ const conflicts=validatedAmountConflicts(primary,[{id:'reply',label:'Company reply',text:reply,role:'company-reply'}]);
+ assert.equal(conflicts.filter(conflict=>conflict.startsWith('Amount conflict:')).length,20);
+ assert.equal(conflicts.filter(conflict=>conflict.includes('conflicts were omitted')).length,1);
+ assert.match(conflicts.at(-1) ?? '',/conflicts were omitted.*original records/i);
+ assert.ok(conflicts.every(conflict=>conflict.length > 0));
+});
+
+test('monetary conflict text stays within budget without truncating source quotes',()=>{
+ const filler=' supporting detail'.repeat(70);
+ const primary=Array.from({length:20},(_,index)=>`2026-10-08 TX-${index+1} charge USD 40${filler}.`).join('\n');
+ const reply=Array.from({length:20},(_,index)=>`2026-10-08 TX-${index+1} charge USD 400${filler}.`).join('\n');
+ const conflicts=validatedAmountConflicts(primary,[{id:'reply',label:'Company reply',text:reply,role:'company-reply'}]);
+ assert.ok(conflicts.reduce((total,conflict)=>total+conflict.length,0) <= 24_000);
+ assert.ok(conflicts.some(conflict=>conflict.includes('conflicts were omitted')));
+ for (const conflict of conflicts.filter(item=>item.startsWith('Amount conflict:'))) {
+  assert.match(conflict,/states “2026-10-08 TX-\d+ charge USD 40 supporting detail/);
+  assert.match(conflict,/states “2026-10-08 TX-\d+ charge USD 400 supporting detail/);
+ }
+});
+
+test('an ordinary monetary conflict keeps its complete existing wording',()=>{
+ const conflicts=validatedAmountConflicts('2026-10-08 TX-1842 charge: USD 40.',[{id:'reply',label:'Company response',text:'TX-1842 charge on 2026-10-08: USD 400.'}]);
+ assert.deepEqual(conflicts,[`Amount conflict: Primary document [primary] states “2026-10-08 TX-1842 charge: USD 40.”; Company response [reply] states “TX-1842 charge on 2026-10-08: USD 400.”. Review the original documents; neither value is independently verified.`]);
 });

@@ -310,6 +310,7 @@
   right: -7%;
   top: -13%;
   width: min(58vw, 760px);
+  height: auto;
   opacity: 0.5;
   mix-blend-mode: multiply;
   mask-image: radial-gradient(84% 84% at 58% 42%, #000 28%, transparent 76%);
