@@ -35,6 +35,30 @@ export type SaveCaseInput = {
   letter: string;
 };
 
+const SAVED_COMPANY_NAME_SENTINELS = new Set([
+  "unknown", "not stated", "not supplied", "not found", "unspecified", "n/a", "none", "null",
+]);
+
+function usableSavedCompanyName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 200 || SAVED_COMPANY_NAME_SENTINELS.has(trimmed.toLocaleLowerCase())) return undefined;
+  return trimmed;
+}
+
+/** Choose a user-confirmed name first, then a bounded document suggestion. */
+export function resolveSavedCompanyName(userEntered: unknown, extracted: unknown): string {
+  return usableSavedCompanyName(userEntered) ?? usableSavedCompanyName(extracted) ?? "Unlisted company";
+}
+
+/** Select a bounded, usable document-derived suggestion without exposing placeholder facts. */
+export function savedCompanyNameSuggestion(facts: unknown, packId: string): string | undefined {
+  if (!isRecord(facts)) return undefined;
+  const company = usableSavedCompanyName(facts.company);
+  if (company) return company;
+  return packId === "flight-delay" ? usableSavedCompanyName(facts.airline) : undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -188,10 +212,10 @@ export function validateSaveCase(value: unknown): value is SaveCaseInput {
   if (typeof input.companyName !== "string" || input.companyName.trim().length < 1 || input.companyName.length > 200) return false;
   if (typeof input.packId !== "string" || !getPack(input.packId)) return false;
   if (!("IN EU US".split(" ").includes(input.jurisdiction ?? ""))) return false;
-  if (!Array.isArray(input.documents) || input.documents.length < 2 || input.documents.length > 5
+  if (!Array.isArray(input.documents) || input.documents.length < 1 || input.documents.length > 5
     || !input.documents.every(doc => isRecord(doc) && typeof doc.id === "string" && typeof doc.role === "string")) return false;
   const restoredDocuments = restoreSavedCaseDocuments(input.documents);
-  if (!restoredDocuments || !restoredDocuments.companyReply) return false;
+  if (!restoredDocuments) return false;
   const documentCharacters = input.documents.reduce((total, doc) => total + doc.text.length, 0);
   if (documentCharacters > 30_000 || typeof input.letter !== "string" || input.letter.length > 30_000) return false;
   if (!isValidCaseAnalysis(input.analysis, input.letter) || input.analysis.country !== input.jurisdiction) return false;

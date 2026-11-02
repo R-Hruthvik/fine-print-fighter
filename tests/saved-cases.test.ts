@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isValidCaseAnalysis, restoreSavedCaseDocuments, validateSaveCase } from "../src/lib/saved-cases";
+import { isValidCaseAnalysis, resolveSavedCompanyName, restoreSavedCaseDocuments, savedCompanyNameSuggestion, validateSaveCase } from "../src/lib/saved-cases";
 import type { PipelineResult } from "../src/lib/types";
 import { normalizeScopeAnswers } from "../src/lib/scope-answers";
 
@@ -39,6 +39,39 @@ test("saved-case validation accepts only supported packs, jurisdictions, and non
   assert.equal(validateSaveCase(saveInput({ jurisdiction: "EU" })), false);
   assert.equal(validateSaveCase(saveInput({ documents: [{ label: "Primary document", text: " " }, { label: "Company response", text: "Reply" }] })), false);
 });
+
+test("saved-case validation accepts a primary document without a company reply and restores an empty response", () => {
+  const documents = [{ id: "primary-document", role: "primary-record", label: "Primary document", text: "Ticket" }];
+  assert.equal(validateSaveCase(saveInput({ documents })), true);
+  assert.deepEqual(restoreSavedCaseDocuments(documents), {
+    primaryDocument: documents[0], companyReply: undefined, additionalDocuments: [],
+  });
+  assert.equal(restoreSavedCaseDocuments(documents)?.companyReply?.text ?? "", "");
+  assert.equal(validateSaveCase(saveInput({ documents: [{ ...documents[0], text: " " }] })), false);
+  assert.equal(validateSaveCase(saveInput({ documents: [...documents, { id: "empty-exhibit", role: "unknown", label: "Notes", text: " " }] })), false);
+});
+
+test("saved company names prefer user text, then usable extracted facts, then a safe fallback", () => {
+  assert.equal(resolveSavedCompanyName("  My Airline  ", "Extracted Airline"), "My Airline");
+  assert.equal(resolveSavedCompanyName(" ", "  Example Streaming  "), "Example Streaming");
+  assert.equal(resolveSavedCompanyName("N/A", " Air India "), "Air India");
+  for (const unusable of ["", "unknown", "not stated", "not supplied", "not found", "unspecified", "n/a", "none", "null", "  UNKNOWN  ", 42, null, undefined, "x".repeat(201)]) {
+    assert.equal(resolveSavedCompanyName("not supplied", unusable), "Unlisted company");
+  }
+  assert.equal(resolveSavedCompanyName("User Company", "x".repeat(201)), "User Company");
+});
+
+test("flight company suggestions fall back from unusable company facts to usable airline facts", () => {
+  assert.equal(savedCompanyNameSuggestion({ company: " Example Support ", airline: "Air India" }, "flight-delay"), "Example Support");
+  for (const company of ["", "unknown", "N/A", "x".repeat(201)]) {
+    assert.equal(savedCompanyNameSuggestion({ company, airline: " Air India " }, "flight-delay"), "Air India");
+  }
+  assert.equal(savedCompanyNameSuggestion({ company: "N/A", airline: "Air India" }, "subscription-cancel"), undefined);
+  assert.equal(savedCompanyNameSuggestion({ company: "unknown", airline: "x".repeat(201) }, "flight-delay"), undefined);
+  assert.equal(savedCompanyNameSuggestion({ airline: "Air India" }, "flight-delay"), "Air India");
+  assert.equal(savedCompanyNameSuggestion({ airline: "Air India" }, "surprise-bill"), undefined);
+});
+
 
 test("saved document metadata preserves stable IDs and explicit roles through restore", () => {
   const documents = [

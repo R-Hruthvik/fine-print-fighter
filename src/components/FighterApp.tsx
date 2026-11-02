@@ -4,7 +4,7 @@ import { factLabel } from "@/lib/fact-labels";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { AnalysisProgressEvent, Country, PipelineResult, SavedDocumentRole } from "@/lib/types";
-import type { SaveCaseInput } from "@/lib/saved-cases";
+import { resolveSavedCompanyName, savedCompanyNameSuggestion, type SaveCaseInput } from "@/lib/saved-cases";
 import { clearPendingCaseSave, storePendingCaseSave } from "@/lib/pending-case-save";
 import { CASE_TYPES, COUNTRIES } from "@/lib/packs";
 import { COMPANIES } from "@/lib/catalog";
@@ -97,6 +97,8 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
   const [resultRevision, setResultRevision] = useState(0);
   const [fileName, setFileName] = useState<string | null>(null);
   const [saveRequested, setSaveRequested] = useState(false);
+  const [saveCompanyName, setSaveCompanyName] = useState<string | null>(null);
+  const [saveCompanyNameEdited, setSaveCompanyNameEdited] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [pendingSaveReady, setPendingSaveReady] = useState(false);
@@ -106,6 +108,9 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
   const resultHeading = useRef<HTMLDivElement>(null);
   const matchedCompany = COMPANIES.find((company) => company.name.toLowerCase() === form.companyName.trim().toLowerCase());
   const hasCompanyCoverage = Boolean(matchedCompany && matchedCompany.packIds.some((packId) => packId === form.caseType) && matchedCompany.jurisdictions.includes(form.country));
+  const extractedCompanyName = result ? savedCompanyNameSuggestion(result.facts, form.caseType) : undefined;
+  const initialSaveCompanyName = resolveSavedCompanyName(form.companyName, extractedCompanyName);
+  const displayedSaveCompanyName = saveCompanyName ?? (initialSaveCompanyName === "Unlisted company" ? "" : initialSaveCompanyName);
 
   useEffect(() => () => requestRef.current?.abort(), []);
   useEffect(() => {
@@ -266,12 +271,12 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     try {
       const documents = [
         { id: "primary-document", role: "primary-record" as SavedDocumentRole, label: "Primary document", text: form.documentText },
-        { id: "company-response", role: "company-reply" as SavedDocumentRole, label: "Company response", text: form.companyResponse },
+        ...(form.companyResponse.trim() ? [{ id: "company-response", role: "company-reply" as SavedDocumentRole, label: "Company response", text: form.companyResponse }] : []),
         ...additionalDocuments.map((item) => ({ ...item, role: item.role as SavedDocumentRole })),
       ];
       const letter = editedLetter;
       const input: SaveCaseInput = {
-        companyName: form.companyName || "Unlisted company",
+        companyName: resolveSavedCompanyName(saveCompanyName ?? form.companyName, saveCompanyNameEdited && !displayedSaveCompanyName.trim() ? undefined : extractedCompanyName),
         packId: form.caseType,
         jurisdiction: form.country,
         documents,
@@ -304,6 +309,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
       <details className="save-case-disclosure"><summary>Save this case to your account</summary><section className="save-case-panel" aria-label="Save case">
       <label className="save-case-choice"><input type="checkbox" checked={saveRequested} onChange={(event) => { const checked = event.target.checked; setSaveRequested(checked); setSaveMessage(null); if (!checked) { clearPendingCaseSave(); setPendingSaveReady(false); } }} /> Save the complete case to my private account</label>
       <p>Optional. Includes the documents, analysis, and draft letter. Nothing is saved unless you check this box and choose Save case.</p>
+      <label className="save-company-field" htmlFor="save-company-name">Company name for this saved case<input id="save-company-name" value={displayedSaveCompanyName} maxLength={200} onChange={(event) => { setSaveCompanyName(event.target.value); setSaveCompanyNameEdited(true); }} placeholder="Unlisted company" />{extractedCompanyName ? <span className="field-hint">Document-derived suggestion · unverified: {extractedCompanyName}</span> : <span className="field-hint">Check this name before saving. You can leave it blank if it is not known.</span>}</label>
       <button className="secondary-button" type="button" disabled={!saveRequested || saving || exhibitRemovalPending} onClick={() => void saveCase()}>{saving ? "Saving…" : "Save case"}<span aria-hidden="true">→</span></button>
       {exhibitRemovalPending ? <p className="save-case-message">Recheck the remaining evidence before saving so the saved documents and analysis stay aligned.</p> : null}
       {saveMessage ? <p className="save-case-message" role="status">{saveMessage}{pendingSaveReady ? <> <a href="/sign-in?next=%2Fcases%2Fcontinue-save">Sign in</a> or <a href="/sign-up?next=%2Fcases%2Fcontinue-save">create an account</a>.</> : saveMessage.startsWith("Sign in to save this case") ? <> <a href="/sign-in" target="_blank" rel="noopener noreferrer">Sign in in another tab</a> or <a href="/sign-up" target="_blank" rel="noopener noreferrer">create an account in another tab</a>.</> : null}</p> : null}
