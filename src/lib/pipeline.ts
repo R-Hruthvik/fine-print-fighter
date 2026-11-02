@@ -65,6 +65,8 @@ function unknown(value: unknown): boolean {
   return value == null || value === "" || (Array.isArray(value) && value.length === 0) || (typeof value === "string" && /^(not stated|unknown|not supplied|not found)$/i.test(value.trim()));
 }
 
+const monetaryFactKeys = new Set(["amount", "disputedAmount", "ticketPrice", "price", "quotedOrPromised", "feeAmount", "chargeAmount", "refundAmount"]);
+
 /** A documented charge is never treated as a sourced entitlement. */
 export function describeRemedy(facts: ExtractedFacts): CompensationResult {
   const raw = facts.disputedAmount ?? facts.amount ?? facts.ticketPrice;
@@ -117,10 +119,21 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     const factConflicts:string[]=[];
     for (const document of additionalDocuments.filter(item=>item.role==="customer-record").slice(0,3)) {
       const supporting=await extractFacts(document.text,primaryPack,signal,true,{id:document.id,label:document.label});
+      const primaryCurrency=facts.currency;
+      const supportingCurrency=supporting.facts.currency;
+      const primaryHasMonetaryValue=[...monetaryFactKeys].some(key=>!unknown(facts[key]));
       for (const key of primaryPack.extractionSchema) {
         const value=supporting.facts[key];
         if (unknown(value)) continue;
         if (unknown(facts[key])) {
+          if (key==="currency" && unknown(primaryCurrency) && primaryHasMonetaryValue) {
+            factConflicts.push(`currency: ${document.label} [${document.id}] states ${String(value)}, while a monetary value in the primary document has no currency. The currencies were kept separate.`);
+            continue;
+          }
+          if (monetaryFactKeys.has(key) && (unknown(supportingCurrency) || !unknown(primaryCurrency) && supportingCurrency !== primaryCurrency)) {
+            factConflicts.push(`${key}: ${document.label} [${document.id}] states ${String(value)} in ${String(supportingCurrency ?? "an unstated currency")}; the primary document states ${String(primaryCurrency ?? "no currency")}. The amount was left unresolved to avoid combining values from different currencies.`);
+            continue;
+          }
           facts[key]=value;
           const evidence=supporting.evidence[key];
           if (evidence) factEvidence[key]=evidence;

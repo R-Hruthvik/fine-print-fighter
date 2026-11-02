@@ -278,3 +278,39 @@ test("a previous company reply never supplies missing customer facts", async () 
   assert.equal(result.facts.currency, null);
   assert.equal(companyReplyWasExtracted, false);
 });
+
+test("a supporting amount with a different currency cannot be paired with the primary currency", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  const outputs = [
+    { company: "Example", amount: null, currency: "INR" },
+    { company: null, amount: 40, currency: "USD" },
+  ];
+  global.fetch = async () => Response.json({ choices: [{ message: { content: JSON.stringify(outputs.shift() ?? { company: null, amount: null, currency: null }) } }] });
+  const result = await runPipeline({
+    documentText: "Example invoice amount is not stated; INR is the billing currency.", pack: getPack("surprise-bill")!, country: "IN",
+    additionalDocuments: [{ id: "receipt-usd", role: "customer-record", label: "Receipt", text: "USD 40" }],
+  });
+  assert.equal(result.facts.currency, "INR");
+  assert.equal(result.facts.amount, null);
+  assert.equal(result.compensation.disputedAmount, undefined);
+  assert.ok(result.warnings.some(warning => /currency/i.test(warning)));
+});
+
+test("a supporting currency cannot be paired with an uncategorized primary amount", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  const outputs = [
+    { company: "Example", amount: 40, currency: null },
+    { company: null, amount: null, currency: "EUR" },
+  ];
+  global.fetch = async () => Response.json({ choices: [{ message: { content: JSON.stringify(outputs.shift() ?? { company: null, amount: null, currency: null }) } }] });
+  const result = await runPipeline({
+    documentText: "Example invoice shows 40, but does not state a currency.", pack: getPack("surprise-bill")!, country: "US",
+    additionalDocuments: [{ id: "receipt-eur", role: "customer-record", label: "Receipt", text: "EUR" }],
+  });
+  assert.equal(result.facts.amount, 40);
+  assert.equal(result.facts.currency, null);
+  assert.equal(result.compensation.disputedAmount, undefined);
+  assert.ok(result.warnings.some(warning => /kept separate/i.test(warning)));
+});
