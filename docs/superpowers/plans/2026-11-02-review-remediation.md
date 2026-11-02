@@ -1,10 +1,10 @@
-# Fine Print Fighter Review Remediation Implementation Plan
+# Fine Print Fighter Remediation Plan and Execution Record
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status: completed for the current-main scope.** The task checklists below preserve the original local-checkout plan; they are historical, not pending work. Use the execution results at the end for implemented behavior and verification.
 
-> **Implementation update:** The original audit below targeted local branch `ccc5844`. Execution starts from remote `main` at `327cf18`. Use the current-main triage appendix for changed runtime targets; the original task interfaces are historical where explicitly superseded.
+> **Implementation update:** The original audit below targeted local branch `ccc5844`. Execution was based on remote `main` at `327cf18` and is complete. Use the current-main triage appendix for changed runtime targets; the original task interfaces are historical where explicitly superseded.
 
-**Goal:** Correct saved-case evidence restoration, conflict detection, case brief display, extracted company naming, and repository lint hygiene across the Fine Print Fighter review flow.
+**Goal:** Correct saved-case evidence restoration, conflict detection, company naming, lint hygiene, and the audited UX problems on current main. The old case-brief-prop defect (#40) applies to local-only code absent from main and was closed as not applicable.
 
 **Architecture:** Preserve each new workspace document's stable ID and explicit role in saved JSON, then restore only records with known customer-record roles to fact extraction and retain company replies as attributed reply evidence. Make conflict comparison event-aware and conservative, display the brief already returned by the pipeline, seed an empty company field from the extracted company, and configure ESLint to ignore generated worktrees.
 
@@ -17,7 +17,7 @@
 - Preserve the existing saved-case document and analysis JSON formats for already-saved cases; the existing JSONB column needs no SQL migration.
 - Legacy additional documents have no trustworthy role metadata: do not infer or display customer/company attribution for them.
 - Preserve exact document IDs, labels, text, and explicit roles for new saves and reanalysis.
-- A validated conflict requires incompatible claims with the same explicit event reference, date, event type, and currency; a shared date alone is insufficient.
+- A validated monetary conflict requires incompatible claims with the same explicit event reference, date, event type, and currency; a shared date alone is insufficient.
 - Extracted company names remain document-derived candidate facts and must not overwrite a name the user entered.
 - Preserve all pre-existing unrelated working-tree changes; implementation commits stage only the new task hunks.
 - If a task hunk cannot be separated from unrelated pre-existing edits, defer that commit and report it rather than staging user work.
@@ -385,3 +385,40 @@ GREEN: `npm run typecheck` succeeded; `npm test` returned `128` passing, `0` fai
 Commit: `9e66fac Require string evidence roles in case requests`.
 
 No provider calls, UI changes, or save-helper changes were made.
+
+
+## Final execution results
+
+Completed with fresh Luna implementers and reviewers in the isolated `codex/review-remediation` worktree. Small task/fix commits were retained, pushed, and merged through the following PRs. The original dirty checkout and its local-only features were preserved.
+
+| Scope | Result | Merged PR |
+|---|---|---|
+| #43 lint hygiene | Generated nested worktrees excluded from lint and Git | [#44](https://github.com/R-Hruthvik/fine-print-fighter/pull/44) |
+| #41 monetary conflicts | Typed money and strict source-backed event identity; ambiguous cases fail closed | [#45](https://github.com/R-Hruthvik/fine-print-fighter/pull/45) |
+| #39 saved evidence | Stable IDs/roles, legacy unknown-role reads, supporting-record facts/provenance and currency safeguards | [#46](https://github.com/R-Hruthvik/fine-print-fighter/pull/46) |
+| #42 and UX-2 saving | Reply-free first complaints; editable company suggestions, user precedence and flight fallback | [#47](https://github.com/R-Hruthvik/fine-print-fighter/pull/47) |
+| Receipt integration | Receipt/current-or-prior-company comparisons; non-string role rejection; no symmetric pair duplicates | [#48](https://github.com/R-Hruthvik/fine-print-fighter/pull/48) |
+| UX-1, UX-3, UX-4 and final review | Stage focus, pre-prepare notice, two-column mobile navigation, real image metadata; reset name state and bound conflict output | [#49](https://github.com/R-Hruthvik/fine-print-fighter/pull/49) |
+| #40 disposition | Closed `not_planned`: referenced local-only Brief/claims/comparison code does not exist in current main; no comparison feature was added or removed | Current-main triage above |
+
+The final code merge is `cc0d00c3535785677f2d882ee9d03a1a99a9d6a6`. Four published bugs (#39, #41, #42, #43) were fixed and closed; #40 was explicitly triaged rather than represented as fixed. Existing broader issues, including #38 production accessibility/performance review, remain open.
+
+### Final validation
+
+- Fresh root `npm run verify` passed at code head `16a00d8`: lint, typecheck, **132 tests**, and production build. No application code changed after that verification. Log: `/tmp/fpf-remediation-final-verify.log` (temporary).
+- Fresh Luna whole-change review found two additional problems: save-name state leaked across new cases, and deterministic monetary reporting could amplify input into an oversized output. Separate corrective commits `ed94f16` and `16a00d8` received scoped approval.
+- Monetary output now stops at 20 complete details and a 24,000-character aggregate budget, including a clear omission notice. Exact emitted quotations remain intact; the notice does not claim complete coverage.
+- Browser-harness with controlled API responses verified document role/ID through recheck, actual receipt source labels, save request and pending sign-in handoff, primary-only first-complaint saving, and explicit company-name corrections.
+- Browser checks verified no initial focus steal; forward/back/reset stage focus; retained result focus; disclosure before the first provider-bound action; and two equal navigation columns at 320px and 390px with targets at least 44px tall and no horizontal page overflow.
+- Hero metadata matches the actual JPEG (1248×832); desktop rendering preserves its ratio, uses eager loading and accurate sizes, and produced no recorded image warnings.
+- A pre-fix production replay showed `First Case Override` persisting into a second case whose extracted name was `Second Case Company`. The rebuilt production replay correctly showed the second case's own name. A previous deliberate blank edit likewise no longer suppresses the third case's suggestion. Rechecking the same case still preserves an explicit override despite a changed extracted suggestion. No unhandled errors occurred in these exercised flows.
+
+These browser checks used fictional records and controlled `/api/prepare`, `/api/extract`, and `/api/cases` responses. They did not write authenticated Supabase data. Physical touch, full assistive-technology testing, comprehensive contrast measurement, and measured production performance remain outside this verification; #38 covers that broader work.
+
+### Decisions recorded during execution
+
+1. Repair current remote-main runtime rather than reintroduce local-only claims/workspace architecture. Cost if wrong: unshipped local-only features require a separate follow-up instead of receiving these exact patches.
+2. Verify the current result model before changing #40; its absent Brief/claim-comparison path made the old prop fix inapplicable. Cost if wrong: a desired comparison feature still needs its own current-main specification and implementation.
+3. Preserve existing primary-first presentation for primary/receipt comparisons. The review phrase “customer-record lefts” referred to eligibility for added comparisons, not mandatory output orientation. Cost if wrong: presentation ordering only; both source identities and exact passages remain explicit.
+
+A nonblocking review suggestion to root-anchor Git's worktree ignores was deferred: generated worktree directories are intentionally ignored at any depth. The decorative stamp easing remains intentional, with reduced-motion alternatives; it was not treated as a functional defect.
