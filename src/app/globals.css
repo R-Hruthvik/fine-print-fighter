@@ -603,6 +603,9 @@ html[data-reveal-ready="true"] [data-reveal].is-revealed { opacity: 1; transform
 .save-case-choice { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 600; }
 .save-case-choice input { width: 16px; height: 16px; min-height: 0; accent-color: var(--accent); }
 .save-case-panel > p { grid-column: 1; margin: 0; color: var(--muted); font-size: 14px; }
+.save-company-field { grid-column: 1; }
+.save-company-field input { width: 100%; }
+.save-company-field .field-hint { margin-top: 5px; }
 .save-case-panel > button { grid-column: 2; grid-row: 1 / span 2; }
 .save-case-message { grid-column: 1 / -1 !important; color: var(--ink) !important; }
 .intake-stepper { display: flex; gap: clamp(12px, 3vw, 31px); padding: 12px 0 18px; margin: 0 0 25px; border-bottom: 1px solid var(--line); }

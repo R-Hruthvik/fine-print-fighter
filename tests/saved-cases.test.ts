@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isValidCaseAnalysis, restoreSavedCaseDocuments, validateSaveCase } from "../src/lib/saved-cases";
+import { isValidCaseAnalysis, resolveSavedCompanyName, restoreSavedCaseDocuments, validateSaveCase } from "../src/lib/saved-cases";
 import type { PipelineResult } from "../src/lib/types";
 import { normalizeScopeAnswers } from "../src/lib/scope-answers";
 
@@ -49,6 +49,16 @@ test("saved-case validation accepts a primary document without a company reply a
   assert.equal(restoreSavedCaseDocuments(documents)?.companyReply?.text ?? "", "");
   assert.equal(validateSaveCase(saveInput({ documents: [{ ...documents[0], text: " " }] })), false);
   assert.equal(validateSaveCase(saveInput({ documents: [...documents, { id: "empty-exhibit", role: "unknown", label: "Notes", text: " " }] })), false);
+});
+
+test("saved company names prefer user text, then usable extracted facts, then a safe fallback", () => {
+  assert.equal(resolveSavedCompanyName("  My Airline  ", "Extracted Airline"), "My Airline");
+  assert.equal(resolveSavedCompanyName(" ", "  Example Streaming  "), "Example Streaming");
+  assert.equal(resolveSavedCompanyName("N/A", " Air India "), "Air India");
+  for (const unusable of ["", "unknown", "not stated", "not supplied", "not found", "unspecified", "n/a", "none", "null", "  UNKNOWN  ", 42, null, undefined, "x".repeat(201)]) {
+    assert.equal(resolveSavedCompanyName("not supplied", unusable), "Unlisted company");
+  }
+  assert.equal(resolveSavedCompanyName("User Company", "x".repeat(201)), "User Company");
 });
 
 

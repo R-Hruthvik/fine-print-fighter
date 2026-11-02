@@ -35,6 +35,22 @@ export type SaveCaseInput = {
   letter: string;
 };
 
+const SAVED_COMPANY_NAME_SENTINELS = new Set([
+  "unknown", "not stated", "not supplied", "not found", "unspecified", "n/a", "none", "null",
+]);
+
+function usableSavedCompanyName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 200 || SAVED_COMPANY_NAME_SENTINELS.has(trimmed.toLocaleLowerCase())) return undefined;
+  return trimmed;
+}
+
+/** Choose a user-confirmed name first, then a bounded document suggestion. */
+export function resolveSavedCompanyName(userEntered: unknown, extracted: unknown): string {
+  return usableSavedCompanyName(userEntered) ?? usableSavedCompanyName(extracted) ?? "Unlisted company";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
