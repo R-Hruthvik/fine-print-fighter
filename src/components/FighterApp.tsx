@@ -4,7 +4,7 @@ import { factLabel } from "@/lib/fact-labels";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { AnalysisProgressEvent, Country, PipelineResult, SavedDocumentRole } from "@/lib/types";
-import { resolveSavedCompanyName, type SaveCaseInput } from "@/lib/saved-cases";
+import { resolveSavedCompanyName, savedCompanyNameSuggestion, type SaveCaseInput } from "@/lib/saved-cases";
 import { clearPendingCaseSave, storePendingCaseSave } from "@/lib/pending-case-save";
 import { CASE_TYPES, COUNTRIES } from "@/lib/packs";
 import { COMPANIES } from "@/lib/catalog";
@@ -108,8 +108,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
   const resultHeading = useRef<HTMLDivElement>(null);
   const matchedCompany = COMPANIES.find((company) => company.name.toLowerCase() === form.companyName.trim().toLowerCase());
   const hasCompanyCoverage = Boolean(matchedCompany && matchedCompany.packIds.some((packId) => packId === form.caseType) && matchedCompany.jurisdictions.includes(form.country));
-  const extractedCompanyName = result && typeof result.facts.company === "string" ? result.facts.company
-    : result && form.caseType === "flight-delay" && typeof result.facts.airline === "string" ? result.facts.airline : undefined;
+  const extractedCompanyName = result ? savedCompanyNameSuggestion(result.facts, form.caseType) : undefined;
   const initialSaveCompanyName = resolveSavedCompanyName(form.companyName, extractedCompanyName);
   const displayedSaveCompanyName = saveCompanyName ?? (initialSaveCompanyName === "Unlisted company" ? "" : initialSaveCompanyName);
 

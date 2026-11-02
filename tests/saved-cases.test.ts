@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isValidCaseAnalysis, resolveSavedCompanyName, restoreSavedCaseDocuments, validateSaveCase } from "../src/lib/saved-cases";
+import { isValidCaseAnalysis, resolveSavedCompanyName, restoreSavedCaseDocuments, savedCompanyNameSuggestion, validateSaveCase } from "../src/lib/saved-cases";
 import type { PipelineResult } from "../src/lib/types";
 import { normalizeScopeAnswers } from "../src/lib/scope-answers";
 
@@ -59,6 +59,17 @@ test("saved company names prefer user text, then usable extracted facts, then a 
     assert.equal(resolveSavedCompanyName("not supplied", unusable), "Unlisted company");
   }
   assert.equal(resolveSavedCompanyName("User Company", "x".repeat(201)), "User Company");
+});
+
+test("flight company suggestions fall back from unusable company facts to usable airline facts", () => {
+  assert.equal(savedCompanyNameSuggestion({ company: " Example Support ", airline: "Air India" }, "flight-delay"), "Example Support");
+  for (const company of ["", "unknown", "N/A", "x".repeat(201)]) {
+    assert.equal(savedCompanyNameSuggestion({ company, airline: " Air India " }, "flight-delay"), "Air India");
+  }
+  assert.equal(savedCompanyNameSuggestion({ company: "N/A", airline: "Air India" }, "subscription-cancel"), undefined);
+  assert.equal(savedCompanyNameSuggestion({ company: "unknown", airline: "x".repeat(201) }, "flight-delay"), undefined);
+  assert.equal(savedCompanyNameSuggestion({ airline: "Air India" }, "flight-delay"), "Air India");
+  assert.equal(savedCompanyNameSuggestion({ airline: "Air India" }, "surprise-bill"), undefined);
 });
 
 

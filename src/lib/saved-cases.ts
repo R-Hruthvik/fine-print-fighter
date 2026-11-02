@@ -51,6 +51,14 @@ export function resolveSavedCompanyName(userEntered: unknown, extracted: unknown
   return usableSavedCompanyName(userEntered) ?? usableSavedCompanyName(extracted) ?? "Unlisted company";
 }
 
+/** Select a bounded, usable document-derived suggestion without exposing placeholder facts. */
+export function savedCompanyNameSuggestion(facts: unknown, packId: string): string | undefined {
+  if (!isRecord(facts)) return undefined;
+  const company = usableSavedCompanyName(facts.company);
+  if (company) return company;
+  return packId === "flight-delay" ? usableSavedCompanyName(facts.airline) : undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
