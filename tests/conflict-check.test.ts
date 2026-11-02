@@ -84,6 +84,64 @@ test('additional exhibits retain their supplied identity and label',async()=>{
  assert.match(result.conflicts[0],/Bank statement \[exhibit-2\] states “TX-1842 charge of USD 400 on 2026-10-08\.”/);
 });
 
+test('customer-record receipt is compared with company reply even when primary narrative has no event details',async()=>{
+ const receipt='On 2026-10-08 the charge was USD 40, transaction reference TX-1842.';
+ const reply='On 2026-10-08 the charge was USD 400, transaction reference TX-1842.';
+ const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
+  primaryDocument:'I dispute a subscription charge.',
+  companyResponse:reply,
+  companyResponseId:'company-answer-9',
+  companyResponseLabel:'Company reply',
+  additionalDocuments:[{id:'receipt-a',label:'Receipt A',role:'customer-record',text:receipt}],
+ });
+ assert.equal(result.conflicts.length,1);
+ assert.match(result.conflicts[0],/Receipt A \[receipt-a\] states “On 2026-10-08 the charge was USD 40, transaction reference TX-1842\.”/);
+ assert.match(result.conflicts[0],/Company reply \[company-answer-9\] states “On 2026-10-08 the charge was USD 400, transaction reference TX-1842\.”/);
+});
+
+test('receipt comparisons fail closed when their explicit role is missing',async()=>{
+ const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
+  primaryDocument:'I dispute a subscription charge.',
+  companyResponse:'2026-10-08 TX-1842 charge USD 400.',
+  additionalDocuments:[{id:'legacy-receipt',label:'Legacy receipt',text:'2026-10-08 TX-1842 charge USD 40.'}],
+ });
+ assert.deepEqual(result.conflicts,[]);
+});
+
+test('receipt and reply pairs still require matching explicit event anchors and currency',async()=>{
+ const receipt='2026-10-08 TX-1842 charge USD 40.';
+ for(const companyResponse of [
+  'USD 400.',
+  '2026-10-08 TX-1843 charge USD 400.',
+  '2026-10-08 TX-1842 refund USD 400.',
+  '2026-10-08 TX-1842 charge EUR 400.',
+ ]) {
+  const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
+   primaryDocument:'I dispute a subscription charge.',
+   companyResponse,
+   additionalDocuments:[{id:'receipt-a',label:'Receipt A',role:'customer-record',text:receipt}],
+  });
+  assert.deepEqual(result.conflicts,[]);
+ }
+});
+
+test('each eligible unordered source pair is reported once while distinct receipts retain their evidence',async()=>{
+ const receiptA='2026-10-08 TX-1842 charge USD 40.';
+ const receiptB='On 2026-10-08 transaction TX-1842 was charged USD 40.';
+ const reply='Charge USD 400 for TX-1842 on 2026-10-08.';
+ const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
+  primaryDocument:'I dispute a subscription charge.',
+  companyResponse:reply,
+  additionalDocuments:[
+   {id:'receipt-a',label:'Receipt A',role:'customer-record',text:receiptA},
+   {id:'receipt-b',label:'Receipt B',role:'customer-record',text:receiptB},
+  ],
+ });
+ assert.equal(result.conflicts.length,2);
+ assert.equal(result.conflicts.filter(conflict=>conflict.includes('Receipt A [receipt-a]')).length,1);
+ assert.equal(result.conflicts.filter(conflict=>conflict.includes('Receipt B [receipt-b]')).length,1);
+});
+
 test('reference wording does not create phantom references',async()=>{
  const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
   primaryDocument:'2026-10-08 transaction reference TX-1842 charge USD 40.',

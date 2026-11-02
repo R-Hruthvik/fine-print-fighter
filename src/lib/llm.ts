@@ -102,7 +102,7 @@ function validEvaluation(value:unknown):value is Evaluation {
 export async function evaluateFindings(facts:ExtractedFacts,sources:Source[],pack:{evaluationPrompt:string},signal?:AbortSignal,context:{companyResponse?:string;companyResponseId?:string;companyResponseLabel?:string;additionalDocuments?:{id:string;label:string;text:string;role?:string}[];primaryDocument?:string;primaryDocumentId?:string;primaryDocumentLabel?:string;factEvidence?:Record<string,{documentId:string;label:string;excerpts:string[]}>;scopeAnswers?:ScopeAnswers}={}):Promise<Evaluation> {
   const primaryIdentity={id:context.primaryDocumentId ?? 'primary',label:context.primaryDocumentLabel ?? 'Primary document'};
   const localConflicts=validatedAmountConflicts(context.primaryDocument ?? '',[
-    ...(context.companyResponse?[{id:context.companyResponseId ?? 'company-response',label:context.companyResponseLabel ?? 'Company response',text:context.companyResponse}]:[]),
+    ...(context.companyResponse?[{id:context.companyResponseId ?? 'company-response',label:context.companyResponseLabel ?? 'Company response',text:context.companyResponse,role:'company-reply'}]:[]),
     ...(context.additionalDocuments ?? []),
   ],primaryIdentity);
   // Different dates can describe different events; proximity cannot establish contradiction.
