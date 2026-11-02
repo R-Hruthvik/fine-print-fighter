@@ -76,3 +76,53 @@ test('additional exhibits retain their supplied identity and label',async()=>{
  assert.equal(result.conflicts.length,1);
  assert.match(result.conflicts[0],/Bank statement \[exhibit-2\] states “TX-1842 charge of USD 400 on 2026-10-08\.”/);
 });
+
+test('reference wording does not create phantom references',async()=>{
+ const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
+  primaryDocument:'2026-10-08 transaction reference TX-1842 charge USD 40.',
+  companyResponse:'2026-10-08 transaction reference TX-1842 charge USD 400.',
+ });
+ assert.equal(result.conflicts.length,1);
+});
+
+test('refund wording does not create a phantom REF reference',async()=>{
+ const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
+  primaryDocument:'2026-10-08 TX-1842 refund USD 40.',
+  companyResponse:'2026-10-08 TX-1842 refund USD 400.',
+ });
+ assert.equal(result.conflicts.length,1);
+});
+
+test('reference punctuation is preserved when comparing transaction identity',async()=>{
+ const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
+  primaryDocument:'2026-10-08 TX-A-12 charge USD 40.',
+  companyResponse:'2026-10-08 TX-A12 charge USD 400.',
+ });
+ assert.deepEqual(result.conflicts,[]);
+});
+
+test('ambiguous dollar symbols do not establish a currency',async()=>{
+ const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
+  primaryDocument:'2026-10-08 TX-1842 charge $40.',
+  companyResponse:'2026-10-08 TX-1842 charge $400.',
+ });
+ assert.deepEqual(result.conflicts,[]);
+});
+
+test('a dollar symbol is usable when its sentence explicitly establishes USD',async()=>{
+ const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{
+  primaryDocument:'2026-10-08 TX-1842 charge in USD: $40.',
+  companyResponse:'2026-10-08 TX-1842 charge USD 400.',
+ });
+ assert.equal(result.conflicts.length,1);
+});
+
+test('overprecision and malformed grouping cannot be partially parsed as money',async()=>{
+ for(const [primaryDocument,companyResponse] of [
+  ['2026-10-08 TX-1842 charge USD 40.123.','2026-10-08 TX-1842 charge USD 41.00.'],
+  ['2026-10-08 TX-1842 charge USD 1,2.','2026-10-08 TX-1842 charge USD 13.'],
+ ]) {
+  const result=await evaluateFindings({amount:40,currency:'USD'},[],{evaluationPrompt:'Review.'},undefined,{primaryDocument,companyResponse});
+  assert.deepEqual(result.conflicts,[]);
+ }
+});

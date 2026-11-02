@@ -13,7 +13,8 @@ type MonetaryStatement = {
 };
 
 function statements(text: string): MonetaryStatement[] {
-  const amounts = /\b(INR|USD|EUR|GBP|CAD|AUD)\s*([+-]?\d[\d,]*(?:\.\d{1,2})?)|([$€£₹]|Rs\.?)\s*([+-]?\d[\d,]*(?:\.\d{1,2})?)|([+-]?\d[\d,]*(?:\.\d{1,2})?)\s*(INR|USD|EUR|GBP|CAD|AUD)\b|([+-]?\d[\d,]*(?:\.\d{1,2})?)\s*([$€£₹]|Rs\.?)/gi;
+  const money = '([+-]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d{1,2})?)(?!\\d|[,.]\\d)';
+  const amounts = new RegExp(`\\b(INR|USD|EUR|GBP|CAD|AUD)\\s*${money}|([$€£₹]|Rs\\.?)\\s*${money}|${money}\\s*(INR|USD|EUR|GBP|CAD|AUD)\\b|${money}\\s*([$€£₹]|Rs\\.?)`, 'gi');
   const result: MonetaryStatement[] = [];
   // Split lines first, then sentences. Decimal points remain inside the amount token.
   const passages = text.split(/\r?\n/).flatMap(line => line.split(/(?<=[.!?])\s+(?=[A-Z0-9])/));
@@ -27,7 +28,7 @@ function statements(text: string): MonetaryStatement[] {
     const date = dateMatches[0][1];
     const parsedDate = new Date(date);
     if (!Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) continue;
-    const references = [...quote.matchAll(/\b(?:TX|REF|INV|ORDER|PAYMENT)[-:#]?([A-Z0-9]+(?:-[A-Z0-9]+)*)\b/gi)];
+    const references = [...quote.matchAll(/\b(?:TX|REF|INV|ORDER|PAYMENT)[-:#][A-Z0-9]+(?:-[A-Z0-9]+)*\b/gi)];
     if (references.length !== 1) continue;
     const hasCharge = /\b(?:charge|charged|charging)\b/i.test(quote);
     const hasRefund = /\b(?:refund|refunded|refunding)\b/i.test(quote);
@@ -35,12 +36,21 @@ function statements(text: string): MonetaryStatement[] {
     const match = found[0];
     const rawCurrency = match[1] ?? match[3] ?? match[6] ?? match[8];
     const rawAmount = match[2] ?? match[4] ?? match[5] ?? match[7];
-    const currency = ({ '$': 'USD', '€': 'EUR', '£': 'GBP', '₹': 'INR', 'RS': 'INR', 'RS.': 'INR' } as Record<string, string>)[rawCurrency.toUpperCase()] ?? rawCurrency.toUpperCase();
+    let currency = ({ '€': 'EUR', '£': 'GBP', '₹': 'INR', 'RS': 'INR', 'RS.': 'INR' } as Record<string, string>)[rawCurrency.toUpperCase()] ?? rawCurrency.toUpperCase();
+    if (rawCurrency === '$') {
+      const dollarCurrencies = [
+        { code: 'USD', pattern: /\bUSD\b|\bUS dollars?\b|\bUnited States dollars?\b/i },
+        { code: 'CAD', pattern: /\bCAD\b|\bCanadian dollars?\b/i },
+        { code: 'AUD', pattern: /\bAUD\b|\bAustralian dollars?\b/i },
+      ].filter(item => item.pattern.test(quote));
+      if (dollarCurrencies.length !== 1) continue;
+      currency = dollarCurrencies[0].code;
+    }
     const numeric = Number(rawAmount.replace(/,/g, ''));
     if (!Number.isFinite(numeric)) continue;
     result.push({
       date,
-      reference: references[0][0].toUpperCase().replace(/[-:#]/g, ''),
+      reference: references[0][0].toUpperCase(),
       event: hasCharge ? 'charge' : 'refund',
       currency,
       amount: numeric.toFixed(2),
