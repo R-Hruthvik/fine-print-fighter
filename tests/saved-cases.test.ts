@@ -15,7 +15,10 @@ const analysis: PipelineResult = {
 
 const saveInput = (overrides: Record<string, unknown> = {}) => ({
   companyName: "Example company", packId: "flight-delay", jurisdiction: "IN",
-  documents: [{ label: "Primary document", text: "Ticket" }, { label: "Company response", text: "Reply" }],
+  documents: [
+    { id: "primary-document", role: "primary-record", label: "Primary document", text: "Ticket" },
+    { id: "company-response", role: "company-reply", label: "Company response", text: "Reply" },
+  ],
   analysis, letter: "Edited complaint draft", ...overrides,
 });
 
@@ -61,6 +64,16 @@ test("legacy reserved labels restore their roles while arbitrary extras remain u
   assert.equal(restored?.primaryDocument.id, "primary-document");
   assert.equal(restored?.companyReply?.id, "company-response");
   assert.deepEqual(restored?.additionalDocuments, [{ id: "saved-unknown-1", role: "unknown", label: "Customer receipt", text: "USD 40" }]);
+});
+
+test("legacy saved cases retain the prior twenty-document read limit while new saves require typed metadata", () => {
+  const legacyDocuments = [
+    { label: "Primary document", text: "Primary" },
+    { label: "Company response", text: "Reply" },
+    ...Array.from({ length: 18 }, (_, index) => ({ label: `Old exhibit ${index + 1}`, text: `Context ${index + 1}` })),
+  ];
+  assert.equal(restoreSavedCaseDocuments(legacyDocuments)?.additionalDocuments.length, 18);
+  assert.equal(validateSaveCase(saveInput({ documents: legacyDocuments })), false);
 });
 
 test("saved document metadata rejects duplicate, reserved collisions, ambiguous roles, and oversized text", () => {

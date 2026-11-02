@@ -6,6 +6,7 @@ import { extractFacts } from "../src/lib/llm";
 import { describeRemedy } from "../src/lib/pipeline";
 import { normalizeScopeAnswers } from "../src/lib/scope-answers";
 import { getSourceProfile } from "../src/lib/source-registry";
+import { restoreSavedCaseDocuments } from "../src/lib/saved-cases";
 import type { Source } from "../src/lib/types";
 
 const fetchOriginal = global.fetch;
@@ -196,4 +197,84 @@ test('evaluation receives original excerpts and keeps later evidence separately 
   assert.match(prompt,/ORIGINAL REQUEST OCTOBER EIGHT/);
   assert.match(prompt,/TERMINATION OCTOBER TWELVE/);
   assert.match(prompt,/factEvidence/);
+});
+
+test("only explicit customer records fill missing primary facts with their own provenance", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  const outputs = [
+    { company: "Example", amount: null, currency: null },
+    { company: null, amount: 40, currency: "USD" },
+  ];
+  let receiptWasExtracted = false;
+  let companyReplyWasExtracted = false;
+  let unknownContextWasExtracted = false;
+  global.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body));
+    const prompt = String(body.messages[1].content);
+    if (prompt.includes("Extract only stated facts")) {
+      if (prompt.includes("USD 40")) receiptWasExtracted = true;
+      if (prompt.includes("USD 99")) companyReplyWasExtracted = true;
+      if (prompt.includes("USD 88")) unknownContextWasExtracted = true;
+      return Response.json({ choices: [{ message: { content: JSON.stringify(outputs.shift() ?? { company: null, amount: null, currency: null }) } }] });
+    }
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ findings: [], unverified: [], unanswered: [], conflicts: [] }) } }] });
+  };
+  const restored = restoreSavedCaseDocuments([
+    { id: "invoice-original", role: "primary-record", label: "Original invoice", text: "A bill from Example." },
+    { id: "answer-current", role: "company-reply", label: "Current company response", text: "USD 72" },
+    { id: "receipt-40", role: "customer-record", label: "Receipt", text: "USD 40" },
+    { id: "reply-amount", role: "previous-company-reply", label: "Earlier company email", text: "USD 99" },
+    { id: "context-amount", role: "unknown", label: "Notes", text: "USD 88" },
+  ]);
+  assert.ok(restored);
+  const result = await runPipeline({
+    documentText: restored.primaryDocument.text, primaryDocumentId: restored.primaryDocument.id, primaryDocumentLabel: restored.primaryDocument.label,
+    pack: getPack("surprise-bill")!, country: "US", additionalDocuments: restored.additionalDocuments,
+  });
+  assert.equal(result.facts.amount, 40);
+  assert.equal(result.facts.currency, "USD");
+  assert.deepEqual(result.factEvidence.amount, { documentId: "receipt-40", label: "Receipt", excerpts: ["40"] });
+  assert.deepEqual(result.factEvidence.currency, { documentId: "receipt-40", label: "Receipt", excerpts: ["USD"] });
+  assert.equal(receiptWasExtracted, true, "the customer-record text is sent to the fact extractor");
+  assert.equal(companyReplyWasExtracted, false);
+  assert.equal(unknownContextWasExtracted, false);
+});
+
+test("supporting customer records cannot overwrite conflicting primary values", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  const outputs = [
+    { company: "Example", amount: 50, currency: "USD" },
+    { company: null, amount: 40, currency: "USD" },
+  ];
+  global.fetch = async () => Response.json({ choices: [{ message: { content: JSON.stringify(outputs.shift()) } }] });
+  const result = await runPipeline({
+    documentText: "Example charged USD 50 on 2026-10-08 for TX-1842.", primaryDocumentId: "original-bill-7", primaryDocumentLabel: "Original bill",
+    pack: getPack("surprise-bill")!, country: "US",
+    additionalDocuments: [{ id: "receipt-40", role: "customer-record", label: "Receipt", text: "Example charge USD 40 on 2026-10-08 for TX-1842." }],
+  });
+  assert.equal(result.facts.amount, 50);
+  assert.equal(result.factEvidence.amount?.documentId, "original-bill-7");
+  assert.ok(result.conflicts.some(conflict => conflict.includes("Original bill [original-bill-7]") && conflict.includes("[receipt-40]") && conflict.includes("Receipt")));
+  assert.ok(result.warnings.some(warning => /supporting record/i.test(warning)));
+});
+
+test("a previous company reply never supplies missing customer facts", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  let companyReplyWasExtracted = false;
+  global.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body));
+    const prompt = String(body.messages[1].content);
+    if (prompt.includes("Extract only stated facts") && prompt.includes("USD 40")) companyReplyWasExtracted = true;
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ company: "Example", amount: null, currency: null }) } }] });
+  };
+  const result = await runPipeline({
+    documentText: "A bill from Example.", pack: getPack("surprise-bill")!, country: "US",
+    additionalDocuments: [{ id: "reply-40", role: "previous-company-reply", label: "Company reply", text: "USD 40" }],
+  });
+  assert.equal(result.facts.amount, null);
+  assert.equal(result.facts.currency, null);
+  assert.equal(companyReplyWasExtracted, false);
 });

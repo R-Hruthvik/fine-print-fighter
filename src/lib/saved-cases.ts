@@ -1,4 +1,4 @@
-import type { Country, PipelineResult } from "./types";
+import type { Country, PipelineResult, SavedDocumentRole } from "./types";
 import { getPack } from "./packs";
 import { isValidScopeAnswers } from "./scope-answers";
 import { safeSourceURL } from "./evidence";
@@ -12,7 +12,6 @@ export type SavedCaseSummary = {
   updated_at: string;
 };
 
-export type SavedDocumentRole = "primary-record" | "customer-record" | "company-reply" | "previous-company-reply" | "unknown";
 export type SavedCaseDocument = { id: string; label: string; text: string; role: SavedDocumentRole };
 
 export type RestoredCaseDocuments = {
@@ -22,7 +21,7 @@ export type RestoredCaseDocuments = {
 };
 
 export type SavedCaseDetail = SavedCaseSummary & {
-  documents: SavedCaseDocument[];
+  documents: (SavedCaseDocument | { label: string; text: string })[];
   analysis: PipelineResult;
   letter: string;
 };
@@ -31,7 +30,7 @@ export type SaveCaseInput = {
   companyName: string;
   packId: string;
   jurisdiction: Country;
-  documents: ({ label: string; text: string } | SavedCaseDocument)[];
+  documents: SavedCaseDocument[];
   analysis: PipelineResult;
   letter: string;
 };
@@ -62,7 +61,12 @@ function roleForSavedDocument(document: Record<string, unknown>): SavedDocumentR
 
 /** Read current metadata and legacy {label,text} rows without guessing exhibit roles. */
 export function restoreSavedCaseDocuments(value: unknown): RestoredCaseDocuments | null {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 5) return null;
+  if (!Array.isArray(value) || value.length < 1 || value.length > 20) return null;
+  const hasMetadata = value.some(item => isRecord(item) && (item.id !== undefined || item.role !== undefined));
+  const hasCompleteMetadata = value.every(item => isRecord(item) && item.id !== undefined && item.role !== undefined);
+  if (hasMetadata && !hasCompleteMetadata) return null;
+  const typedDocuments = hasMetadata;
+  if (typedDocuments && value.length > 5) return null;
   const seen = new Set<string>();
   const normalized: SavedCaseDocument[] = [];
   let legacyIndex = 0;
@@ -87,8 +91,9 @@ export function restoreSavedCaseDocuments(value: unknown): RestoredCaseDocuments
   const primaryDocument = primaryDocuments[0];
   const companyReply = companyReplies[0];
   const additionalDocuments = normalized.filter(document => document !== primaryDocument && document !== companyReply);
-  if (additionalDocuments.length > 3) return null;
-  if (additionalDocuments.some(document => document.text.length > 12_000)) return null;
+  if (typedDocuments && additionalDocuments.length > 3) return null;
+  if (additionalDocuments.filter(document => document.role === "customer-record").length > 3) return null;
+  if (typedDocuments && additionalDocuments.some(document => document.text.length > 12_000)) return null;
   if (normalized.reduce((total, document) => total + document.text.length, 0) > 30_000) return null;
   return { primaryDocument, companyReply, additionalDocuments };
 }
@@ -183,8 +188,10 @@ export function validateSaveCase(value: unknown): value is SaveCaseInput {
   if (typeof input.companyName !== "string" || input.companyName.trim().length < 1 || input.companyName.length > 200) return false;
   if (typeof input.packId !== "string" || !getPack(input.packId)) return false;
   if (!("IN EU US".split(" ").includes(input.jurisdiction ?? ""))) return false;
-  if (!Array.isArray(input.documents) || input.documents.length < 2 || input.documents.length > 5) return false;
-  if (!restoreSavedCaseDocuments(input.documents)) return false;
+  if (!Array.isArray(input.documents) || input.documents.length < 2 || input.documents.length > 5
+    || !input.documents.every(doc => isRecord(doc) && typeof doc.id === "string" && typeof doc.role === "string")) return false;
+  const restoredDocuments = restoreSavedCaseDocuments(input.documents);
+  if (!restoredDocuments || !restoredDocuments.companyReply) return false;
   const documentCharacters = input.documents.reduce((total, doc) => total + doc.text.length, 0);
   if (documentCharacters > 30_000 || typeof input.letter !== "string" || input.letter.length > 30_000) return false;
   if (!isValidCaseAnalysis(input.analysis, input.letter) || input.analysis.country !== input.jurisdiction) return false;

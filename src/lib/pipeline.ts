@@ -1,5 +1,5 @@
 import { buildReviewSummary } from "./review-summary";
-import type { PipelineResult, RulePack, Country, ExtractedFacts, CompensationResult, AnalysisProgressEvent, AnalysisStage, ScopeAnswers, Source } from "./types";
+import type { PipelineResult, RulePack, Country, ExtractedFacts, CompensationResult, AnalysisProgressEvent, AnalysisStage, ScopeAnswers, Source, SavedDocumentRole } from "./types";
 import { extractFacts, planQueries, evaluateFindings, scoreCase, draftLetter, escalateLadder } from "./llm";
 import { researchWithWarnings } from "./tavily";
 import { modelProviderConfig, ProviderError, requireProviderConfiguration } from "./provider";
@@ -12,7 +12,11 @@ export interface PipelineOptions {
   documentText: string;
   companyResponse?: string;
   companyName?: string;
-  additionalDocuments?: {id:string;label:string;text:string}[];
+  additionalDocuments?: {id:string;label:string;text:string;role?:SavedDocumentRole}[];
+  primaryDocumentId?: string;
+  primaryDocumentLabel?: string;
+  companyResponseId?: string;
+  companyResponseLabel?: string;
   scopeAnswers?: ScopeAnswers;
   pack: RulePack;
   country: Country;
@@ -75,6 +79,10 @@ export function describeRemedy(facts: ExtractedFacts): CompensationResult {
 
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
   const { documentText, pack, country, companyName, userName = "not supplied", desiredOutcome = "a review and fair resolution of the disputed charge", language = "English", replyDeadline = "14 days", companyResponse = "", additionalDocuments = [] } = options;
+  const primaryDocumentId=options.primaryDocumentId ?? "primary-document";
+  const primaryDocumentLabel=options.primaryDocumentLabel ?? "Primary document";
+  const companyResponseId=options.companyResponseId ?? "company-response";
+  const companyResponseLabel=options.companyResponseLabel ?? "Company response";
   const scopeAnswers=options.scopeAnswers?.packId===pack.id ? options.scopeAnswers : normalizeScopeAnswers(pack.id);
   requireProviderConfiguration();
   const started = Date.now();
@@ -102,18 +110,38 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     } finally { stageDurations[name] = Date.now() - start; }
   }
   const primaryPack={...pack,extractionSchema:pack.extractionSchema.filter(key=>key!=="companyResponse"&&key!=="companyPosition")};
-  const extracted = await stage("extract", () => extractFacts(documentText, primaryPack, signal, true));
-  const {facts,evidence:factEvidence}=extracted;
+  const extracted = await stage("extract", async () => {
+    const primary=await extractFacts(documentText, primaryPack, signal, true, {id:primaryDocumentId,label:primaryDocumentLabel});
+    const facts=primary.facts;
+    const factEvidence=primary.evidence;
+    const factConflicts:string[]=[];
+    for (const document of additionalDocuments.filter(item=>item.role==="customer-record").slice(0,3)) {
+      const supporting=await extractFacts(document.text,primaryPack,signal,true,{id:document.id,label:document.label});
+      for (const key of primaryPack.extractionSchema) {
+        const value=supporting.facts[key];
+        if (unknown(value)) continue;
+        if (unknown(facts[key])) {
+          facts[key]=value;
+          const evidence=supporting.evidence[key];
+          if (evidence) factEvidence[key]=evidence;
+        } else if (JSON.stringify(facts[key])!==JSON.stringify(value)) {
+          factConflicts.push(`${key}: the primary document states “${String(facts[key])}”; ${document.label} [${document.id}] states “${String(value)}”. Keep both statements in context; neither value is independently verified.`);
+        }
+      }
+    }
+    return {facts,factEvidence,factConflicts};
+  });
+  const {facts,factEvidence,factConflicts}=extracted;
   const missing = pack.requiredFacts.filter(key => unknown(facts[key]));
   const queries = await stage("plan", () => planQueries(facts, country, pack, signal, companyName, scopeAnswers));
   const research = await stage("research", () => researchWithWarnings(queries, signal, pack.searchPlan.preferredDomains));
   const rebuttalLab=await stage("rebuttal",()=>companyResponse.trim() ? investigateObjections({facts,companyResponse,country,sources:research.sources,additionalDocuments,signal,onAction:(action)=>emitProgress({type:"tool",...action})}) : Promise.resolve({objections:[],actions:[],warnings:[],sources:research.sources}));
   const sources=rebuttalLab.sources;
   classifySourceProfiles(sources,pack,country,companyName);
-  const evaluation = await stage("evaluate", () => evaluateFindings(facts, sources, pack, signal, {companyResponse,additionalDocuments,primaryDocument:documentText,factEvidence,scopeAnswers}));
+  const evaluation = await stage("evaluate", () => evaluateFindings(facts, sources, pack, signal, {companyResponse,companyResponseId,companyResponseLabel,additionalDocuments,primaryDocument:documentText,primaryDocumentId,primaryDocumentLabel,factEvidence,scopeAnswers}));
   const { findings, unverified, conflicts } = evaluation;
   const missingScope=scopeAnswers.answers.filter(answer=>answer.status==="not_provided").map(answer=>`If known, provide ${answer.label.toLowerCase()} to help review the scope. This detail was not supplied.`);
-  const unanswered = [...new Set([...evaluation.unanswered, ...missing.map(key => `Please confirm ${key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()} to assess applicability.`),...missingScope])];
+  const unanswered = [...new Set([...evaluation.unanswered, ...missing.map(key => `Please confirm ${key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()} to assess applicability.`),...missingScope,...factConflicts.map(conflict=>`Review the primary document and supporting record: ${conflict}`)])];
   const score = await stage("score", () => scoreCase(findings, signal));
   // Search outages and missing critical facts always restrict strength and coverage.
   if (missing.length || research.warnings.length) {
@@ -123,7 +151,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const compensation = describeRemedy(facts);
   const { letter, citations } = await stage("draft", () => draftLetter(facts, findings, compensation, pack, userName, desiredOutcome, language, replyDeadline, sources, signal, additionalDocuments));
   const escalation = await stage("escalate", () => escalateLadder(pack, country, sources, signal));
-  const warnings = [...research.warnings,...rebuttalLab.warnings];
+  const warnings = [...research.warnings,...rebuttalLab.warnings,...factConflicts.map(conflict=>`A supporting record disagrees with a primary value. ${conflict}`)];
   if (language.trim().toLowerCase() !== "english") warnings.push("The reviewable letter template is currently available in English only. Your requested language was not used.");
   if (!queries.length) warnings.push("No usable research queries could be generated. Evidence coverage is incomplete.");
   if (missing.length) warnings.push("Important applicability details are missing. Check the unanswered questions before relying on the analysis.");

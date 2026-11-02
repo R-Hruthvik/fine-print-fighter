@@ -33,7 +33,7 @@ function sourceAuthorityStatus(authority: PipelineResult["sources"][number]["aut
   return "Unreviewed publisher";
 }
 
-type AdditionalDocument = { id: string; label: string; text: string };
+type AdditionalDocument = { id: string; label: string; text: string; role: "customer-record" | "previous-company-reply" | "unknown" };
 export function CaseResult({ result, previousResult = null, additionalDocuments = [], exhibitRemovalPending = false, onRemoveDocument, isFictionalSample = false, onReset, onRecheck, rechecking = false, progressEvents = [], recheckError, recheckNotice, onCancelRecheck, onLetterChange }: {
   result: PipelineResult;
   previousResult?: PipelineResult | null;
@@ -52,10 +52,10 @@ export function CaseResult({ result, previousResult = null, additionalDocuments 
 }) {
   const [letter, setLetter] = useState(result.letter);
   const [selectedObjection, setSelectedObjection] = useState<string | null>(null);
-  const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, {label:string;text:string}>>({});
+  const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, {label:string;text:string;role:AdditionalDocument["role"]}>>({});
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const rebuttalLab = result.rebuttalLab;
-  const selectedDraft = selectedObjection ? evidenceDrafts[selectedObjection] ?? {label:"",text:""} : {label:"",text:""};
+  const selectedDraft = selectedObjection ? evidenceDrafts[selectedObjection] ?? {label:"",text:"",role:"unknown" as const} : {label:"",text:"",role:"unknown" as const};
 
   useEffect(() => {
     if (selectedObjection) document.getElementById("evidence-label")?.focus();
@@ -79,7 +79,7 @@ export function CaseResult({ result, previousResult = null, additionalDocuments 
       return;
     }
     setEvidenceError(null);
-    await onRecheck([{ id: `e-${crypto.randomUUID()}`, label: selectedDraft.label.trim(), text: selectedDraft.text }]);
+    await onRecheck([{ id: `e-${crypto.randomUUID()}`, label: selectedDraft.label.trim(), text: selectedDraft.text, role: selectedDraft.role }]);
   }
   const [reviewView, setReviewView] = useState<'next' | 'details' | 'letter' | 'sources'>('next');
   const summary = buildReviewSummary(result);
@@ -131,7 +131,7 @@ export function CaseResult({ result, previousResult = null, additionalDocuments 
               <div className="rebuttal-heading"><div><p className="eyebrow">Investigate the explanation</p><h2 id="rebuttal-heading">The company’s explanation</h2></div><span className="status-label">Evidence, not assumptions</span></div>
               <p className="section-description">Examine the company’s possible objection, see the missing evidence, and add a specific document to recheck the record. New evidence may support either side.</p>
               {recheckNotice ? <p className="feedback notice-feedback" role="status">{recheckNotice}</p> : null}
-              {additionalDocuments.length ? <div className="retained-exhibits"><h3>Exhibits included in this review ({additionalDocuments.length}/3)</h3><ul>{additionalDocuments.map((document) => <li key={document.id}><span>{document.label} · {document.id}</span><button className="text-button" type="button" disabled={rechecking} onClick={() => onRemoveDocument?.(document.id)}>Remove from next recheck</button></li>)}</ul></div> : null}
+              {additionalDocuments.length ? <div className="retained-exhibits"><h3>Exhibits included in this review ({additionalDocuments.length}/3)</h3><ul>{additionalDocuments.map((document) => <li key={document.id}><span>{document.label} · {document.id} · {document.role === "customer-record" ? "your record" : document.role === "previous-company-reply" ? "earlier company reply" : "context only"}</span><button className="text-button" type="button" disabled={rechecking} onClick={() => onRemoveDocument?.(document.id)}>Remove from next recheck</button></li>)}</ul></div> : null}
               {recheckError ? <p className="feedback error-feedback" role="alert">{recheckError}</p> : null}
               {exhibitRemovalPending ? <div className="exhibit-removal-pending"><div><strong>Removed exhibits are excluded from the next analysis.</strong><p>The current result still includes them until a recheck succeeds.</p></div><button className="primary-button" type="button" disabled={rechecking} onClick={() => void onRecheck([])}>{rechecking ? "Recheck in progress" : "Recheck remaining evidence"}<span aria-hidden="true">→</span></button></div> : null}
               {rechecking ? <div className="recheck-progress"><div><p className="recheck-status" role="status"><span className="activity-indicator" aria-hidden="true" />Rechecking the supplied record. Your previous analysis stays visible until the revision is ready.</p><AnalysisProgress events={progressEvents} recheck /></div><button className="secondary-button" type="button" onClick={onCancelRecheck}>Cancel recheck</button></div> : null}
@@ -149,7 +149,7 @@ export function CaseResult({ result, previousResult = null, additionalDocuments 
               {rebuttalLab?.actions.length ? <details className="investigation-actions"><summary>Investigation actions <span>{rebuttalLab.actions.length}</span></summary><ol>{rebuttalLab.actions.map((action, index) => <li key={`${action.tool}-${index}`}><div className="action-topline"><strong>{action.tool.replaceAll("_", " ")}</strong><span>{(action.durationMs / 1000).toFixed(1)}s</span></div><p>{action.summary}</p>{action.sourceIds.length ? <div className="finding-sources">{action.sourceIds.map((id) => sourceMap.has(id) ? <a key={id} href={`#source-${id}`}>Source [{id}]</a> : <span key={id}>Reference [{id}]</span>)}</div> : null}</li>)}</ol></details> : null}
               {selectedObjection ? <form id="rebuttal-evidence-form" className="rebuttal-evidence-form" onSubmit={submitEvidence} aria-busy={rechecking}>
                 <h3>What changes this objection?</h3><p className="field-hint">For: {rebuttalLab?.objections.find((item) => item.id === selectedObjection)?.hypothesis}</p>
-                <fieldset disabled={rechecking}><legend className="sr-only">Additional evidence for the selected objection</legend><label htmlFor="evidence-label">Exhibit label<input id="evidence-label" value={selectedDraft.label} onChange={(event) => setEvidenceDrafts((previous) => ({...previous,[selectedObjection!]:{...selectedDraft,label:event.target.value}}))} maxLength={100} placeholder="For example, cancellation confirmation" required /></label><label htmlFor="additional-evidence">Additional document text<textarea id="additional-evidence" value={selectedDraft.text} onChange={(event) => setEvidenceDrafts((previous) => ({...previous,[selectedObjection!]:{...selectedDraft,text:event.target.value}}))} placeholder="Paste the exact confirmation, policy excerpt, or reply. Include relevant dates and wording." aria-describedby="additional-evidence-hint" required /></label><p id="additional-evidence-hint" className="field-hint">{selectedDraft.text.length.toLocaleString("en-IN")} / 12,000 characters per exhibit. The form keeps longer pastes intact and explains when they exceed the limit. All case documents together have a 30,000 character limit. Download any letter edits before rechecking; the new result creates a fresh draft.</p></fieldset>
+                <fieldset disabled={rechecking}><legend className="sr-only">Additional evidence for the selected objection</legend><label htmlFor="evidence-label">Exhibit label<input id="evidence-label" value={selectedDraft.label} onChange={(event) => setEvidenceDrafts((previous) => ({...previous,[selectedObjection!]:{...selectedDraft,label:event.target.value}}))} maxLength={100} placeholder="For example, cancellation confirmation" required /></label><label htmlFor="evidence-role">What kind of document is this?<select id="evidence-role" value={selectedDraft.role} onChange={(event) => setEvidenceDrafts((previous) => ({...previous,[selectedObjection!]:{...selectedDraft,role:event.target.value as AdditionalDocument["role"]}}))}><option value="unknown">Context only · role not confirmed</option><option value="customer-record">My record · receipt, bill, or confirmation</option><option value="previous-company-reply">Earlier company reply</option></select></label><label htmlFor="additional-evidence">Additional document text<textarea id="additional-evidence" value={selectedDraft.text} onChange={(event) => setEvidenceDrafts((previous) => ({...previous,[selectedObjection!]:{...selectedDraft,text:event.target.value}}))} placeholder="Paste the exact confirmation, policy excerpt, or reply. Include relevant dates and wording." aria-describedby="additional-evidence-hint" required /></label><p id="additional-evidence-hint" className="field-hint">{selectedDraft.text.length.toLocaleString("en-IN")} / 12,000 characters per exhibit. The form keeps longer pastes intact and explains when they exceed the limit. All case documents together have a 30,000 character limit. Download any letter edits before rechecking; the new result creates a fresh draft.</p></fieldset>
                 {evidenceError ? <p className="feedback error-feedback" role="alert">{evidenceError}</p> : null}
                 <div className="letter-actions"><button className="primary-button" type="submit" disabled={rechecking}>Recheck with this evidence<span aria-hidden="true">→</span></button>{!rechecking ? <button className="text-button" type="button" onClick={closeEvidenceForm}>Close evidence form</button> : null}</div>
               </form> : null}

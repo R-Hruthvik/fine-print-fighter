@@ -3,7 +3,7 @@ import { factLabel } from "@/lib/fact-labels";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import type { AnalysisProgressEvent, Country, PipelineResult } from "@/lib/types";
+import type { AnalysisProgressEvent, Country, PipelineResult, SavedDocumentRole } from "@/lib/types";
 import type { SaveCaseInput } from "@/lib/saved-cases";
 import { clearPendingCaseSave, storePendingCaseSave } from "@/lib/pending-case-save";
 import { CASE_TYPES, COUNTRIES } from "@/lib/packs";
@@ -92,7 +92,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [additionalDocuments, setAdditionalDocuments] = useState<{ id: string; label: string; text: string }[]>([]);
+  const [additionalDocuments, setAdditionalDocuments] = useState<{ id: string; label: string; text: string; role: "customer-record" | "previous-company-reply" | "unknown" }[]>([]);
   const [exhibitRemovalPending, setExhibitRemovalPending] = useState(false);
   const [resultRevision, setResultRevision] = useState(0);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -169,7 +169,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     await submitAnalysis([]);
   }
 
-  async function recheck(documents: { id: string; label: string; text: string }[]) {
+  async function recheck(documents: { id: string; label: string; text: string; role: "customer-record" | "previous-company-reply" | "unknown" }[]) {
     const merged = [...additionalDocuments];
     for (const document of documents) {
       const index = merged.findIndex((existing) => existing.id === document.id);
@@ -183,7 +183,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     await submitAnalysis(merged);
   }
 
-  async function submitAnalysis(documents: { id: string; label: string; text: string }[]) {
+  async function submitAnalysis(documents: { id: string; label: string; text: string; role: "customer-record" | "previous-company-reply" | "unknown" }[]) {
     if (requestRef.current) return;
     const validation = validateDocument(form.documentText);
     if (validation) { setError(validation); return; }
@@ -265,9 +265,9 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     setSaving(true); setSaveMessage(null);
     try {
       const documents = [
-        { label: "Primary document", text: form.documentText },
-        { label: "Company response", text: form.companyResponse },
-        ...additionalDocuments.map((item) => ({ label: item.label, text: item.text })),
+        { id: "primary-document", role: "primary-record" as SavedDocumentRole, label: "Primary document", text: form.documentText },
+        { id: "company-response", role: "company-reply" as SavedDocumentRole, label: "Company response", text: form.companyResponse },
+        ...additionalDocuments.map((item) => ({ ...item, role: item.role as SavedDocumentRole })),
       ];
       const letter = editedLetter;
       const input: SaveCaseInput = {

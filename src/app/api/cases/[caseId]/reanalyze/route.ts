@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { takeBudget, RequestError, errorResponse } from "@/lib/request";
 import { enforceSharedAnalysisBudget } from "@/lib/shared-budget";
 import { normalizeScopeAnswers, scopeAnswersToInput } from "@/lib/scope-answers";
+import { restoreSavedCaseDocuments } from "@/lib/saved-cases";
 
 type Context = { params: Promise<{ caseId: string }> };
 export const maxDuration = 120;
@@ -23,11 +24,9 @@ export async function POST(_request: Request, { params }: Context) {
   if (!savedCase) return NextResponse.json({ error: "Case not found." }, { status: 404 });
   const pack = getPack(savedCase.pack_id);
   if (!pack || !Array.isArray(savedCase.documents)) return NextResponse.json({ error: "This saved case cannot be reanalyzed." }, { status: 422 });
-  const docs = savedCase.documents as { label?: unknown; text?: unknown }[];
-  if (!docs.every((doc) => typeof doc.label === "string" && typeof doc.text === "string")) return NextResponse.json({ error: "Saved document data is invalid." }, { status: 422 });
-  const primary = docs.find((doc) => doc.label === "Primary document") ?? docs[0];
-  const reply = docs.find((doc) => doc.label === "Company response");
-  const additionalDocuments = docs.filter((doc) => doc !== primary && doc !== reply).map((doc, index) => ({ id: `saved-${index + 1}`, label: doc.label as string, text: doc.text as string }));
+  const restoredDocuments = restoreSavedCaseDocuments(savedCase.documents);
+  if (!restoredDocuments) return NextResponse.json({ error: "Saved document data is invalid." }, { status: 422 });
+  const { primaryDocument, companyReply, additionalDocuments } = restoredDocuments;
   const previousAnalysis = savedCase.analysis && typeof savedCase.analysis === "object" && !Array.isArray(savedCase.analysis)
     ? savedCase.analysis as Record<string, unknown> : {};
   let scopeAnswers;
@@ -39,7 +38,8 @@ export async function POST(_request: Request, { params }: Context) {
     if (process.env.NODE_ENV === "production") await enforceSharedAnalysisBudget(_request);
     else if (!takeBudget(localBudget, "case-reanalysis", Date.now(), 8)) throw new RequestError(429, "RATE_LIMITED", "Too many saved-case analyses. Please wait before trying again.", true);
     const analysis = await runPipeline({
-      documentText: primary.text as string, companyResponse: (reply?.text as string | undefined) ?? "",
+      documentText: primaryDocument.text, primaryDocumentId: primaryDocument.id, primaryDocumentLabel: primaryDocument.label,
+      companyResponse: companyReply?.text ?? "", companyResponseId: companyReply?.id, companyResponseLabel: companyReply?.label,
       additionalDocuments, pack, country: savedCase.jurisdiction as "IN" | "EU" | "US", companyName: savedCase.company_name,
       scopeAnswers,
       desiredOutcome: `Review my complaint about ${savedCase.company_name}.`,
