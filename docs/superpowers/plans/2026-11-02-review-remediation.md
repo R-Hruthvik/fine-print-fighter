@@ -6,11 +6,11 @@
 
 **Goal:** Correct saved-case evidence restoration, conflict detection, company naming, lint hygiene, and the audited UX problems on current main. The old case-brief-prop defect (#40) applies to local-only code absent from main and was closed as not applicable.
 
-**Architecture:** Preserve each new workspace document's stable ID and explicit role in saved JSON, then restore only records with known customer-record roles to fact extraction and retain company replies as attributed reply evidence. Make conflict comparison event-aware and conservative, display the brief already returned by the pipeline, seed an empty company field from the extracted company, and configure ESLint to ignore generated worktrees.
+**Architecture:** Preserve stable document IDs and explicit roles in saved JSON, read legacy extras without guessing attribution, and extract supporting facts only from explicit customer records. Keep source identities and currency pairing intact. Use conservative, bounded same-event monetary comparisons, support reply-free draft saves and editable company suggestions, and repair the audited focus, disclosure, mobile layout, image, and lint behavior.
 
 **Tech Stack:** Next.js 16, React 19, TypeScript, Node's built-in test runner, ESLint 9, Supabase JSONB case documents.
 
-**Spec:** Five confirmed Fine Print Fighter review findings tracked by published issues #39–#43, linked below. This is a plan and audit record; no application fixes have been applied.
+**Spec:** Five confirmed Fine Print Fighter review findings tracked by published issues #39–#43, linked below. This document retains the original plan/audit and records the completed implementation below.
 
 ## Global Constraints
 
