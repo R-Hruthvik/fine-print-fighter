@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Implementation update:** The original audit below targeted local branch `ccc5844`. Execution starts from remote `main` at `327cf18`. Use the current-main triage appendix for changed runtime targets; the original task interfaces are historical where explicitly superseded.
+
 **Goal:** Correct saved-case evidence restoration, conflict detection, case brief display, extracted company naming, and repository lint hygiene across the Fine Print Fighter review flow.
 
 **Architecture:** Preserve each new workspace document's stable ID and explicit role in saved JSON, then restore only records with known customer-record roles to fact extraction and retain company replies as attributed reply evidence. Make conflict comparison event-aware and conservative, display the brief already returned by the pipeline, seed an empty company field from the extracted company, and configure ESLint to ignore generated worktrees.
@@ -338,3 +340,20 @@ Session artifacts below are temporary and may be removed by the system; they are
 - `/tmp/fpf-impeccable-detector.json` — one nonblocking warning.
 
 Real assistive technology, physical device gestures, authenticated database writes, every empty/error state, production performance, and a full contrast inventory remain unverified. These are pending checks, not assumed passes or newly confirmed defects.
+
+
+## Current-main implementation triage
+
+Execution worktree: `.worktrees/codex-review-remediation`, based on remote `main` at `327cf18`. The original dirty checkout is preserved. Baseline: 96 passing tests.
+
+- **#39:** Still valid, but the current pipeline has no workspace extractor. Preserve explicit IDs/roles in new saved documents; restore legacy extras without guessed attribution. Add supporting-record extraction only for explicit record roles; preserve primary values when sources disagree and retain supporting provenance.
+- **#40:** Not applicable to current main: `claims.ts`, `PipelineResult.brief`, and the comparison section are absent. Do not resurrect the local-only feature to fix a missing prop. Record the issue disposition against the current guided result UI.
+- **#41:** Repair the equivalent live defect in `llm.ts:localAmountConflicts`. Require source-backed shared event reference/date/kind/currency and unambiguous typed amounts. Keep the existing validated cancellation-date path and model-conflict demotion.
+- **#42:** Current main already has an editable intake company field. Preserve that field and explicit user values; resolve blank values from usable extracted facts and allow review/correction before saving.
+- **#43:** Ignore generated nested worktree content in ESLint and Git.
+- **UX-1:** Staged context supersedes the old validation failure. Check and repair focus when stages replace controls.
+- **UX-2:** Permit first-complaint saves without a reply; omit empty reply documents. The analysis pipeline already accepts an empty reply.
+- **UX-3:** Disclosure precedes final submission, but `/api/prepare` also sends text to a provider at Step 2. Put disclosure before that first provider-bound action too.
+- **UX-4:** Verify and use a deliberate narrow-screen arrangement for the four review choices.
+
+Each cohesive fix receives its own commit, verification, review, push, and merge to main. Automated tests and browser evidence must target the current implementation, not obsolete local interfaces. Model used for fresh implementers/reviewers: Luna, as requested.
