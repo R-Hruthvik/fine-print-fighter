@@ -63,30 +63,53 @@ function statements(text: string): MonetaryStatement[] {
 /** Only reports differing amounts when both retained passages identify one same monetary event. */
 export function validatedAmountConflicts(primaryText: string, supportingDocuments: AmountConflictDocument[], primaryIdentity: { id: string; label: string } = { id: "primary", label: "Primary document" }): string[] {
   const conflicts = new Set<string>();
+  const maxDetails = 20;
+  const maxTextLength = 24_000;
+  const omissionNotice = "Additional monetary conflicts were omitted; review the original records for complete coverage.";
+  let detailTextLength = 0;
+  let omitted = false;
   const primary = { ...primaryIdentity, text: primaryText, role: 'primary-record' };
   const compare = (left: AmountConflictDocument, right: AmountConflictDocument) => {
-    if (left.id === right.id) return;
+    if (left.id === right.id) return true;
     for (const leftStatement of statements(left.text)) {
       for (const rightStatement of statements(right.text)) {
         if (leftStatement.date !== rightStatement.date || leftStatement.reference !== rightStatement.reference || leftStatement.event !== rightStatement.event || leftStatement.currency !== rightStatement.currency || leftStatement.amount === rightStatement.amount) continue;
-        conflicts.add(`Amount conflict: ${left.label} [${left.id}] states “${leftStatement.quote}”; ${right.label} [${right.id}] states “${rightStatement.quote}”. Review the original documents; neither value is independently verified.`);
+        const detail = `Amount conflict: ${left.label} [${left.id}] states “${leftStatement.quote}”; ${right.label} [${right.id}] states “${rightStatement.quote}”. Review the original documents; neither value is independently verified.`;
+        if (conflicts.has(detail)) continue;
+        if (conflicts.size >= maxDetails || detailTextLength + detail.length + omissionNotice.length > maxTextLength) {
+          omitted = true;
+          return false;
+        }
+        conflicts.add(detail);
+        detailTextLength += detail.length;
       }
     }
+    return true;
   };
   // Preserve legacy primary-to-exhibit comparisons, including untyped extras.
-  for (const document of supportingDocuments) compare(primary, document);
+  for (const document of supportingDocuments) {
+    if (!compare(primary, document)) break;
+  }
 
   // Only explicitly identified customer records can extend the comparison set.
   // The current company response is an eligible counterpart, as are other receipts.
   const customerRecords = supportingDocuments.filter(document => document.role === 'customer-record');
   const companyReplies = supportingDocuments.filter(document => document.role === 'company-reply' || document.role === 'previous-company-reply');
-  for (const receipt of customerRecords) {
-    for (const company of companyReplies) compare(receipt, company);
+  if (!omitted) {
+    comparison: for (const receipt of customerRecords) {
+      for (const company of companyReplies) {
+        if (!compare(receipt, company)) break comparison;
+      }
+    }
   }
-  for (let i = 0; i < customerRecords.length; i++) {
-    for (let j = i + 1; j < customerRecords.length; j++) compare(customerRecords[i], customerRecords[j]);
+  if (!omitted) {
+    comparison: for (let i = 0; i < customerRecords.length; i++) {
+      for (let j = i + 1; j < customerRecords.length; j++) {
+        if (!compare(customerRecords[i], customerRecords[j])) break comparison;
+      }
+    }
   }
-  return [...conflicts];
+  return omitted ? [...conflicts, omissionNotice] : [...conflicts];
 }
 
 /** Narrow, deterministic gate. Only explicit effective-date assertions qualify. */
