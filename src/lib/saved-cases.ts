@@ -188,10 +188,10 @@ export function validateSaveCase(value: unknown): value is SaveCaseInput {
   if (typeof input.companyName !== "string" || input.companyName.trim().length < 1 || input.companyName.length > 200) return false;
   if (typeof input.packId !== "string" || !getPack(input.packId)) return false;
   if (!("IN EU US".split(" ").includes(input.jurisdiction ?? ""))) return false;
-  if (!Array.isArray(input.documents) || input.documents.length < 2 || input.documents.length > 5
+  if (!Array.isArray(input.documents) || input.documents.length < 1 || input.documents.length > 5
     || !input.documents.every(doc => isRecord(doc) && typeof doc.id === "string" && typeof doc.role === "string")) return false;
   const restoredDocuments = restoreSavedCaseDocuments(input.documents);
-  if (!restoredDocuments || !restoredDocuments.companyReply) return false;
+  if (!restoredDocuments) return false;
   const documentCharacters = input.documents.reduce((total, doc) => total + doc.text.length, 0);
   if (documentCharacters > 30_000 || typeof input.letter !== "string" || input.letter.length > 30_000) return false;
   if (!isValidCaseAnalysis(input.analysis, input.letter) || input.analysis.country !== input.jurisdiction) return false;

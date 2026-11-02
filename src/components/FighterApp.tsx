@@ -266,7 +266,7 @@ export function FighterApp({ initialPackId }: { initialPackId?: string }) {
     try {
       const documents = [
         { id: "primary-document", role: "primary-record" as SavedDocumentRole, label: "Primary document", text: form.documentText },
-        { id: "company-response", role: "company-reply" as SavedDocumentRole, label: "Company response", text: form.companyResponse },
+        ...(form.companyResponse.trim() ? [{ id: "company-response", role: "company-reply" as SavedDocumentRole, label: "Company response", text: form.companyResponse }] : []),
         ...additionalDocuments.map((item) => ({ ...item, role: item.role as SavedDocumentRole })),
       ];
       const letter = editedLetter;

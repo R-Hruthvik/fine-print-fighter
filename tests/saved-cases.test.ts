@@ -40,6 +40,18 @@ test("saved-case validation accepts only supported packs, jurisdictions, and non
   assert.equal(validateSaveCase(saveInput({ documents: [{ label: "Primary document", text: " " }, { label: "Company response", text: "Reply" }] })), false);
 });
 
+test("saved-case validation accepts a primary document without a company reply and restores an empty response", () => {
+  const documents = [{ id: "primary-document", role: "primary-record", label: "Primary document", text: "Ticket" }];
+  assert.equal(validateSaveCase(saveInput({ documents })), true);
+  assert.deepEqual(restoreSavedCaseDocuments(documents), {
+    primaryDocument: documents[0], companyReply: undefined, additionalDocuments: [],
+  });
+  assert.equal(restoreSavedCaseDocuments(documents)?.companyReply?.text ?? "", "");
+  assert.equal(validateSaveCase(saveInput({ documents: [{ ...documents[0], text: " " }] })), false);
+  assert.equal(validateSaveCase(saveInput({ documents: [...documents, { id: "empty-exhibit", role: "unknown", label: "Notes", text: " " }] })), false);
+});
+
+
 test("saved document metadata preserves stable IDs and explicit roles through restore", () => {
   const documents = [
     { id: "primary-document", role: "primary-record", label: "Original bill", text: "Primary text" },
