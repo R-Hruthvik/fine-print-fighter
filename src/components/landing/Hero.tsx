@@ -31,8 +31,8 @@ export default function Hero() {
           className={styles.engraving}
           src="/images/fine-print-engraving.jpg"
           alt=""
-          width={1024}
-          height={1024}
+          width={1248}
+          height={832}
           sizes="(max-width: 1310px) 58vw, 760px"
           loading="eager"
         />
