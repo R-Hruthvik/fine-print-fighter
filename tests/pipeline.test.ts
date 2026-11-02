@@ -257,7 +257,7 @@ test("supporting customer records cannot overwrite conflicting primary values", 
   assert.equal(result.facts.amount, 50);
   assert.equal(result.factEvidence.amount?.documentId, "original-bill-7");
   assert.ok(result.conflicts.some(conflict => conflict.includes("Original bill [original-bill-7]") && conflict.includes("[receipt-40]") && conflict.includes("Receipt")));
-  assert.ok(result.warnings.some(warning => /supporting record/i.test(warning)));
+  assert.ok(result.warnings.some(warning => warning.includes("Original bill [original-bill-7]") && warning.includes("Receipt [receipt-40]")));
 });
 
 test("a previous company reply never supplies missing customer facts", async () => {
@@ -342,6 +342,16 @@ test("later supporting records cite the earlier record that supplied an existing
   assert.equal(result.facts.amount, 40);
   assert.equal(result.factEvidence.amount?.documentId, "receipt-a");
   assert.equal(result.factEvidence.currency?.documentId, "receipt-a");
-  assert.ok(result.warnings.some(warning => warning.includes("Receipt A [receipt-a]") && warning.includes("Receipt B [receipt-b]") && /amount/i.test(warning)));
-  assert.ok(result.warnings.some(warning => warning.includes("Receipt A [receipt-a]") && warning.includes("Receipt B [receipt-b]") && /currency/i.test(warning)));
+  const amountWarning=result.warnings.find(warning => warning.includes("Receipt A [receipt-a]") && warning.includes("Receipt B [receipt-b]") && /amount/i.test(warning));
+  const currencyWarning=result.warnings.find(warning => warning.includes("Receipt A [receipt-a]") && warning.includes("Receipt B [receipt-b]") && /currency/i.test(warning));
+  assert.ok(amountWarning);
+  assert.ok(currencyWarning);
+  assert.doesNotMatch(amountWarning,/primary document|primary value/i);
+  assert.doesNotMatch(currencyWarning,/primary document|primary value/i);
+  const amountQuestion=result.unanswered.find(question => question.includes("Receipt A [receipt-a]") && question.includes("Receipt B [receipt-b]") && /amount/i.test(question));
+  const currencyQuestion=result.unanswered.find(question => question.includes("Receipt A [receipt-a]") && question.includes("Receipt B [receipt-b]") && /currency/i.test(question));
+  assert.ok(amountQuestion);
+  assert.ok(currencyQuestion);
+  assert.doesNotMatch(amountQuestion,/primary document|primary value/i);
+  assert.doesNotMatch(currencyQuestion,/primary document|primary value/i);
 });

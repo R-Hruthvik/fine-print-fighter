@@ -160,7 +160,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const evaluation = await stage("evaluate", () => evaluateFindings(facts, sources, pack, signal, {companyResponse,companyResponseId,companyResponseLabel,additionalDocuments,primaryDocument:documentText,primaryDocumentId,primaryDocumentLabel,factEvidence,scopeAnswers}));
   const { findings, unverified, conflicts } = evaluation;
   const missingScope=scopeAnswers.answers.filter(answer=>answer.status==="not_provided").map(answer=>`If known, provide ${answer.label.toLowerCase()} to help review the scope. This detail was not supplied.`);
-  const unanswered = [...new Set([...evaluation.unanswered, ...missing.map(key => `Please confirm ${key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()} to assess applicability.`),...missingScope,...factConflicts.map(conflict=>`Review the primary document and supporting record: ${conflict}`)])];
+  const unanswered = [...new Set([...evaluation.unanswered, ...missing.map(key => `Please confirm ${key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()} to assess applicability.`),...missingScope,...factConflicts.map(conflict=>`Review the cited documents for conflicting values: ${conflict}`)])];
   const score = await stage("score", () => scoreCase(findings, signal));
   // Search outages and missing critical facts always restrict strength and coverage.
   if (missing.length || research.warnings.length) {
@@ -170,7 +170,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const compensation = describeRemedy(facts);
   const { letter, citations } = await stage("draft", () => draftLetter(facts, findings, compensation, pack, userName, desiredOutcome, language, replyDeadline, sources, signal, additionalDocuments));
   const escalation = await stage("escalate", () => escalateLadder(pack, country, sources, signal));
-  const warnings = [...research.warnings,...rebuttalLab.warnings,...factConflicts.map(conflict=>`A supporting record disagrees with a primary value. ${conflict}`)];
+  const warnings = [...research.warnings,...rebuttalLab.warnings,...factConflicts.map(conflict=>`The cited documents contain conflicting statements. ${conflict}`)];
   if (language.trim().toLowerCase() !== "english") warnings.push("The reviewable letter template is currently available in English only. Your requested language was not used.");
   if (!queries.length) warnings.push("No usable research queries could be generated. Evidence coverage is incomplete.");
   if (missing.length) warnings.push("Important applicability details are missing. Check the unanswered questions before relying on the analysis.");
