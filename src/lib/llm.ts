@@ -1,4 +1,4 @@
-import { validatedDateConflicts } from "./conflict-check";
+import { validatedAmountConflicts, validatedDateConflicts } from "./conflict-check";
 import { factLabel } from "./fact-labels";
 import type { ExtractedFacts, ExtractedFactResult, Finding, Source, CaseScore, CompensationResult, EscalationStep, CaseType, Country, ScopeAnswers } from './types';
 import { llmJSON, isObject, stringList, text } from './provider';
@@ -99,36 +99,11 @@ interface Evaluation {
 function validEvaluation(value:unknown):value is Evaluation {
   return isObject(value) && Array.isArray(value.findings) && value.findings.length<=20 && value.findings.every(finding => isObject(finding) && text(finding.statement,3000) && ['favors-customer','favors-company','unclear'].includes(String(finding.stance)) && stringList(finding.sourceIds,10) && text(finding.supportingPassage,3000)) && stringList(value.unverified,20) && stringList(value.unanswered,20) && stringList(value.conflicts,20);
 }
-function amountTokens(value:string):{normalized:string;excerpt:string}[] {
-  const currency=/(?:INR|Rs\.?|USD|EUR|GBP|CAD|AUD|\$|€|£|₹)/i;
-  const pattern=/(?:INR|Rs\.?|USD|EUR|GBP|CAD|AUD|\$|€|£|₹)\s*\d[\d,]*(?:\.\d{1,2})?|\d[\d,]*(?:\.\d{1,2})?\s*(?:INR|Rs\.?|USD|EUR|GBP|CAD|AUD|\$|€|£|₹)/gi;
-  return [...value.matchAll(pattern)].map(match=>{
-    const digits=match[0].match(/[\d,]+(?:\.\d{1,2})?/);const raw=match[0].match(currency)?.[0]??"";
-    const code=/^(?:Rs\.?|₹)$/i.test(raw)?"INR":raw==="$"?"USD":raw==="€"?"EUR":raw==="£"?"GBP":raw.replace(/\W/g,"").toUpperCase();
-    return {normalized:`${code}:${(digits?.[0]??"").replace(/,/g,"")}`,excerpt:match[0]};
-  });
-}
-function localAmountConflicts(facts:ExtractedFacts,context:{companyResponse?:string;additionalDocuments?:{id:string;label:string;text:string}[];factEvidence?:Record<string,{documentId:string;label:string;excerpts:string[]}>}):string[] {
-  const currency=typeof facts.currency==="string"?facts.currency.toUpperCase():"";
-  const customerAmounts=Object.entries(facts).filter(([key,value])=>/amount|price|charge|cost|fee|fare|refund|payment/i.test(key)&&value!==null&&value!==undefined).flatMap(([key,value])=>{
-    const tokens=amountTokens(Array.isArray(value)?value.join(" "):String(value));
-    const exactExcerpt=context.factEvidence?.[key]?.excerpts[0];
-    if(typeof value==="number"&&Number.isFinite(value))return [...tokens,{normalized:`${currency}:${value}`,excerpt:exactExcerpt??String(value)}];
-    if(typeof value==="string"&&/^\s*[\d,]+(?:\.\d{1,2})?\s*$/.test(value)&&currency)return [...tokens,{normalized:`${currency}:${value.replace(/,/g,"").trim()}`,excerpt:exactExcerpt??value.trim()}];
-    return tokens;
-  });
-  if(!customerAmounts.length)return [];
-  const documents=[...(context.companyResponse?[{id:"company-response",label:"Company response",text:context.companyResponse}]:[]),...(context.additionalDocuments??[]).map(({id,label,text})=>({id,label,text}))];
-  const conflicts:string[]=[];
-  for(const document of documents){
-    const amounts=amountTokens(document.text);
-    const differences=amounts.filter(item=>!customerAmounts.some(customer=>customer.normalized===item.normalized));
-    if(differences.length)conflicts.push(`Amount conflict: primary document records ${customerAmounts.map(item=>item.excerpt).join(", ")}; ${document.label} [${document.id}] states ${differences.map(item=>`“${item.excerpt}”`).join(", ")}. Review the original documents; neither value is independently verified.`);
-  }
-  return [...new Set(conflicts)];
-}
 export async function evaluateFindings(facts:ExtractedFacts,sources:Source[],pack:{evaluationPrompt:string},signal?:AbortSignal,context:{companyResponse?:string;additionalDocuments?:{id:string;label:string;text:string}[];primaryDocument?:string;factEvidence?:Record<string,{documentId:string;label:string;excerpts:string[]}>;scopeAnswers?:ScopeAnswers}={}):Promise<Evaluation> {
-  const localConflicts=localAmountConflicts(facts,context);
+  const localConflicts=validatedAmountConflicts(context.primaryDocument ?? '',[
+    ...(context.companyResponse?[{id:'company-response',label:'Company response',text:context.companyResponse}]:[]),
+    ...(context.additionalDocuments ?? []),
+  ]);
   // Different dates can describe different events; proximity cannot establish contradiction.
   const deterministicConflicts=localConflicts;
   if (!sources.length) return {findings:[],unverified:[],unanswered:['No usable research sources were available. Applicable rules and policies remain unknown.'],conflicts:deterministicConflicts};
