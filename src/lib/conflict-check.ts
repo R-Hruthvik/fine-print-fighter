@@ -61,14 +61,14 @@ function statements(text: string): MonetaryStatement[] {
 }
 
 /** Only reports differing amounts when both retained passages identify one same monetary event. */
-export function validatedAmountConflicts(primaryText: string, supportingDocuments: AmountConflictDocument[]): string[] {
+export function validatedAmountConflicts(primaryText: string, supportingDocuments: AmountConflictDocument[], primaryIdentity: { id: string; label: string } = { id: "primary", label: "Primary document" }): string[] {
   const primaryStatements = statements(primaryText);
   const conflicts = new Set<string>();
   for (const document of supportingDocuments) {
     for (const primary of primaryStatements) {
       for (const supporting of statements(document.text)) {
         if (primary.date !== supporting.date || primary.reference !== supporting.reference || primary.event !== supporting.event || primary.currency !== supporting.currency || primary.amount === supporting.amount) continue;
-        conflicts.add(`Amount conflict: Primary document [primary] states “${primary.quote}”; ${document.label} [${document.id}] states “${supporting.quote}”. Review the original documents; neither value is independently verified.`);
+        conflicts.add(`Amount conflict: ${primaryIdentity.label} [${primaryIdentity.id}] states “${primary.quote}”; ${document.label} [${document.id}] states “${supporting.quote}”. Review the original documents; neither value is independently verified.`);
       }
     }
   }

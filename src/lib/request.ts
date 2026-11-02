@@ -26,11 +26,14 @@ export function parseCaseRequest(input: unknown) {
     if (!item || typeof item !== "object" || Array.isArray(item)) throw new RequestError(400, "INVALID_REQUEST", "Each additional document must include an ID, label, and text.");
     const doc = item as Record<string, unknown>;
     if (typeof doc.id !== "string" || !/^[a-zA-Z0-9_-]{1,40}$/.test(doc.id) || typeof doc.label !== "string" || !doc.label.trim() || doc.label.length > 100 || typeof doc.text !== "string" || !doc.text.trim()) throw new RequestError(400, "INVALID_REQUEST", "Each additional document must include a valid ID, label, and text.");
+    if (doc.id === "primary-document" || doc.id === "company-response") throw new RequestError(400, "INVALID_REQUEST", "Additional evidence IDs cannot use reserved primary or company-response IDs.");
+    const role = doc.role === undefined ? "unknown" : doc.role;
+    if (!["customer-record", "previous-company-reply", "unknown"].includes(String(role))) throw new RequestError(400, "INVALID_REQUEST", "Additional evidence role must be customer-record, previous-company-reply, or unknown.");
     if (additionalIds.has(doc.id)) throw new RequestError(400, "INVALID_REQUEST", "Additional evidence document IDs must be unique.");
     additionalIds.add(doc.id);
     if (doc.text.length > 12000) throw new RequestError(413, "INPUT_TOO_LARGE", "An additional evidence document exceeds 12,000 characters.");
     additionalLength += doc.text.length;
-    return { id: doc.id, label: doc.label.trim(), text: doc.text };
+    return { id: doc.id, label: doc.label.trim(), text: doc.text, role: role as "customer-record" | "previous-company-reply" | "unknown" };
   });
   if (b.documentText.length + companyResponse.length + additionalLength > 30000) throw new RequestError(413, "INPUT_TOO_LARGE", "Combined case documents exceed 30,000 characters.");
   if (typeof b.packId !== "string" || !getPack(b.packId)) throw new RequestError(400, "INVALID_REQUEST", "Choose a supported case type.");

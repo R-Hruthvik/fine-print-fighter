@@ -68,3 +68,13 @@ test('first complaints can omit a company reply without weakening reply-review v
   assert.equal(parseCaseRequest({...base,intent:'first-complaint'}).companyResponse,'');
   assert.throws(()=>parseCaseRequest(base));
 });
+
+test("additional document roles accept only explicit values and default old clients to unknown", () => {
+  const base = { ...valid, additionalDocuments: [{ id: "receipt-1", label: "Receipt", text: "USD 40", role: "customer-record" }] };
+  assert.equal((parseCaseRequest(base).additionalDocuments[0] as { role?: string }).role, "customer-record");
+  assert.equal((parseCaseRequest({ ...base, additionalDocuments: [{ ...base.additionalDocuments[0], role: "previous-company-reply" }] }).additionalDocuments[0] as { role?: string }).role, "previous-company-reply");
+  assert.equal((parseCaseRequest({ ...base, additionalDocuments: [{ id: "old-client", label: "Extra", text: "Context" }] }).additionalDocuments[0] as { role?: string }).role, "unknown");
+  assert.throws(() => parseCaseRequest({ ...base, additionalDocuments: [{ ...base.additionalDocuments[0], role: "primary-record" }] }), /role/i);
+  assert.throws(() => parseCaseRequest({ ...base, additionalDocuments: [{ ...base.additionalDocuments[0], id: "primary-document" }] }), /reserved/i);
+  assert.throws(() => parseCaseRequest({ ...base, additionalDocuments: [{ ...base.additionalDocuments[0], id: "company-response" }] }), /reserved/i);
+});

@@ -1,6 +1,7 @@
 export type Country = "IN" | "EU" | "US";
 
 export type CaseType = "flight-delay" | "subscription-cancel" | "surprise-bill";
+export type SavedDocumentRole = "primary-record" | "customer-record" | "company-reply" | "previous-company-reply" | "unknown";
 
 export type AnalysisStage = "extract" | "plan" | "research" | "rebuttal" | "evaluate" | "score" | "draft" | "escalate";
 export type AnalysisProgressEvent =

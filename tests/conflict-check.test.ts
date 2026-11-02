@@ -6,6 +6,13 @@ const left={documentId:'primary',quote:'The service ended on 2026-10-08.'};
 const right={documentId:'reply',quote:'The effective cancellation date is 2026-10-12.'};
 const docs=[{id:'primary',text:left.quote},{id:'reply',text:right.quote}];
 test('explicit conflicting dates retain both source identities',()=>assert.equal(validatedDateConflicts([{event:'effective_cancellation_date',left,right}],docs).length,1));
+test('date conflict gate preserves custom restored document IDs',()=>{
+ const primary={documentId:'original-bill-7',quote:'The service ended on 2026-10-08.'};
+ const reply={documentId:'reply-version-3',quote:'The effective cancellation date is 2026-10-12.'};
+ const conflicts=validatedDateConflicts([{event:'effective_cancellation_date',left:primary,right:reply}],[{id:primary.documentId,text:primary.quote},{id:reply.documentId,text:reply.quote}]);
+ assert.equal(conflicts.length,1);
+ assert.match(conflicts[0],/\[original-bill-7\].*\[reply-version-3\]/);
+});
 test('attempt and active account cannot become a conflict',()=>assert.deepEqual(validatedDateConflicts([{event:'effective_cancellation_date',left:{documentId:'primary',quote:'Cancellation requested on 2026-10-08.'},right:{documentId:'reply',quote:'Account active on 2026-10-10.'}}],[{id:'primary',text:'Cancellation requested on 2026-10-08.'},{id:'reply',text:'Account active on 2026-10-10.'}]),[]));
 test('invented quotations and same-date pairs fail closed',()=>{
  assert.deepEqual(validatedDateConflicts([{event:'effective_cancellation_date',left,right}],[]),[]);

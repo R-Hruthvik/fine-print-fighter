@@ -1,4 +1,4 @@
-import type { Country, PipelineResult } from "./types";
+import type { Country, PipelineResult, SavedDocumentRole } from "./types";
 import { getPack } from "./packs";
 import { isValidScopeAnswers } from "./scope-answers";
 import { safeSourceURL } from "./evidence";
@@ -12,8 +12,16 @@ export type SavedCaseSummary = {
   updated_at: string;
 };
 
+export type SavedCaseDocument = { id: string; label: string; text: string; role: SavedDocumentRole };
+
+export type RestoredCaseDocuments = {
+  primaryDocument: SavedCaseDocument;
+  companyReply?: SavedCaseDocument;
+  additionalDocuments: SavedCaseDocument[];
+};
+
 export type SavedCaseDetail = SavedCaseSummary & {
-  documents: { label: string; text: string }[];
+  documents: (SavedCaseDocument | { label: string; text: string })[];
   analysis: PipelineResult;
   letter: string;
 };
@@ -22,7 +30,7 @@ export type SaveCaseInput = {
   companyName: string;
   packId: string;
   jurisdiction: Country;
-  documents: { label: string; text: string }[];
+  documents: SavedCaseDocument[];
   analysis: PipelineResult;
   letter: string;
 };
@@ -37,6 +45,57 @@ function isStringArray(value: unknown): value is string[] {
 
 function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
+}
+
+const DOCUMENT_ROLES: SavedDocumentRole[] = ["primary-record", "customer-record", "company-reply", "previous-company-reply", "unknown"];
+
+function roleForSavedDocument(document: Record<string, unknown>): SavedDocumentRole | undefined {
+  if (document.role === undefined) {
+    if (document.label === "Primary document") return "primary-record";
+    if (document.label === "Company response") return "company-reply";
+    return "unknown";
+  }
+  return typeof document.role === "string" && DOCUMENT_ROLES.includes(document.role as SavedDocumentRole)
+    ? document.role as SavedDocumentRole : undefined;
+}
+
+/** Read current metadata and legacy {label,text} rows without guessing exhibit roles. */
+export function restoreSavedCaseDocuments(value: unknown): RestoredCaseDocuments | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 20) return null;
+  const hasMetadata = value.some(item => isRecord(item) && (item.id !== undefined || item.role !== undefined));
+  const hasCompleteMetadata = value.every(item => isRecord(item) && item.id !== undefined && item.role !== undefined);
+  if (hasMetadata && !hasCompleteMetadata) return null;
+  const typedDocuments = hasMetadata;
+  if (typedDocuments && value.length > 5) return null;
+  const seen = new Set<string>();
+  const normalized: SavedCaseDocument[] = [];
+  let legacyIndex = 0;
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.label !== "string" || !item.label.trim() || item.label.length > 200
+      || typeof item.text !== "string" || !item.text.trim() || item.text.length > 30_000) return null;
+    const role = roleForSavedDocument(item);
+    if (!role) return null;
+    if (item.id !== undefined && (typeof item.id !== "string" || !/^[a-zA-Z0-9_-]{1,40}$/.test(item.id))) return null;
+    const id = typeof item.id === "string" ? item.id : role === "primary-record" ? "primary-document"
+      : role === "company-reply" ? "company-response" : `saved-unknown-${++legacyIndex}`;
+    if (seen.has(id)) return null;
+    seen.add(id);
+    if (id === "primary-document" && role !== "primary-record" || id === "company-response" && role !== "company-reply") return null;
+    if (item.role !== undefined && (item.label === "Primary document" && role !== "primary-record"
+      || item.label === "Company response" && role !== "company-reply")) return null;
+    normalized.push({ id, role, label: item.label.trim(), text: item.text });
+  }
+  const primaryDocuments = normalized.filter(document => document.role === "primary-record");
+  const companyReplies = normalized.filter(document => document.role === "company-reply");
+  if (primaryDocuments.length !== 1 || companyReplies.length > 1) return null;
+  const primaryDocument = primaryDocuments[0];
+  const companyReply = companyReplies[0];
+  const additionalDocuments = normalized.filter(document => document !== primaryDocument && document !== companyReply);
+  if (typedDocuments && additionalDocuments.length > 3) return null;
+  if (additionalDocuments.filter(document => document.role === "customer-record").length > 3) return null;
+  if (typedDocuments && additionalDocuments.some(document => document.text.length > 12_000)) return null;
+  if (normalized.reduce((total, document) => total + document.text.length, 0) > 30_000) return null;
+  return { primaryDocument, companyReply, additionalDocuments };
 }
 
 /** Validate the analysis shape returned by the pipeline and the storage limits used by saves. */
@@ -129,10 +188,10 @@ export function validateSaveCase(value: unknown): value is SaveCaseInput {
   if (typeof input.companyName !== "string" || input.companyName.trim().length < 1 || input.companyName.length > 200) return false;
   if (typeof input.packId !== "string" || !getPack(input.packId)) return false;
   if (!("IN EU US".split(" ").includes(input.jurisdiction ?? ""))) return false;
-  if (!Array.isArray(input.documents) || input.documents.length < 1 || input.documents.length > 20) return false;
-  if (!input.documents.every((doc) => doc && typeof doc.label === "string" && doc.label.trim().length > 0 && doc.label.length <= 200
-    && typeof doc.text === "string" && doc.text.trim().length > 0)) return false;
-  if (!input.documents.some((doc) => doc.label === "Primary document") || !input.documents.some((doc) => doc.label === "Company response")) return false;
+  if (!Array.isArray(input.documents) || input.documents.length < 2 || input.documents.length > 5
+    || !input.documents.every(doc => isRecord(doc) && typeof doc.id === "string" && typeof doc.role === "string")) return false;
+  const restoredDocuments = restoreSavedCaseDocuments(input.documents);
+  if (!restoredDocuments || !restoredDocuments.companyReply) return false;
   const documentCharacters = input.documents.reduce((total, doc) => total + doc.text.length, 0);
   if (documentCharacters > 30_000 || typeof input.letter !== "string" || input.letter.length > 30_000) return false;
   if (!isValidCaseAnalysis(input.analysis, input.letter) || input.analysis.country !== input.jurisdiction) return false;

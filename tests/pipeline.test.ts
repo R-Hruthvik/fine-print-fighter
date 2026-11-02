@@ -6,6 +6,7 @@ import { extractFacts } from "../src/lib/llm";
 import { describeRemedy } from "../src/lib/pipeline";
 import { normalizeScopeAnswers } from "../src/lib/scope-answers";
 import { getSourceProfile } from "../src/lib/source-registry";
+import { restoreSavedCaseDocuments } from "../src/lib/saved-cases";
 import type { Source } from "../src/lib/types";
 
 const fetchOriginal = global.fetch;
@@ -196,4 +197,161 @@ test('evaluation receives original excerpts and keeps later evidence separately 
   assert.match(prompt,/ORIGINAL REQUEST OCTOBER EIGHT/);
   assert.match(prompt,/TERMINATION OCTOBER TWELVE/);
   assert.match(prompt,/factEvidence/);
+});
+
+test("only explicit customer records fill missing primary facts with their own provenance", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  const outputs = [
+    { company: "Example", amount: null, currency: null },
+    { company: null, amount: 40, currency: "USD" },
+  ];
+  let receiptWasExtracted = false;
+  let companyReplyWasExtracted = false;
+  let unknownContextWasExtracted = false;
+  global.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body));
+    const prompt = String(body.messages[1].content);
+    if (prompt.includes("Extract only stated facts")) {
+      if (prompt.includes("USD 40")) receiptWasExtracted = true;
+      if (prompt.includes("USD 99")) companyReplyWasExtracted = true;
+      if (prompt.includes("USD 88")) unknownContextWasExtracted = true;
+      return Response.json({ choices: [{ message: { content: JSON.stringify(outputs.shift() ?? { company: null, amount: null, currency: null }) } }] });
+    }
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ findings: [], unverified: [], unanswered: [], conflicts: [] }) } }] });
+  };
+  const restored = restoreSavedCaseDocuments([
+    { id: "invoice-original", role: "primary-record", label: "Original invoice", text: "A bill from Example." },
+    { id: "answer-current", role: "company-reply", label: "Current company response", text: "USD 72" },
+    { id: "receipt-40", role: "customer-record", label: "Receipt", text: "USD 40" },
+    { id: "reply-amount", role: "previous-company-reply", label: "Earlier company email", text: "USD 99" },
+    { id: "context-amount", role: "unknown", label: "Notes", text: "USD 88" },
+  ]);
+  assert.ok(restored);
+  const result = await runPipeline({
+    documentText: restored.primaryDocument.text, primaryDocumentId: restored.primaryDocument.id, primaryDocumentLabel: restored.primaryDocument.label,
+    pack: getPack("surprise-bill")!, country: "US", additionalDocuments: restored.additionalDocuments,
+  });
+  assert.equal(result.facts.amount, 40);
+  assert.equal(result.facts.currency, "USD");
+  assert.deepEqual(result.factEvidence.amount, { documentId: "receipt-40", label: "Receipt", excerpts: ["40"] });
+  assert.deepEqual(result.factEvidence.currency, { documentId: "receipt-40", label: "Receipt", excerpts: ["USD"] });
+  assert.equal(receiptWasExtracted, true, "the customer-record text is sent to the fact extractor");
+  assert.equal(companyReplyWasExtracted, false);
+  assert.equal(unknownContextWasExtracted, false);
+});
+
+test("supporting customer records cannot overwrite conflicting primary values", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  const outputs = [
+    { company: "Example", amount: 50, currency: "USD" },
+    { company: null, amount: 40, currency: "USD" },
+  ];
+  global.fetch = async () => Response.json({ choices: [{ message: { content: JSON.stringify(outputs.shift()) } }] });
+  const result = await runPipeline({
+    documentText: "Example charged USD 50 on 2026-10-08 for TX-1842.", primaryDocumentId: "original-bill-7", primaryDocumentLabel: "Original bill",
+    pack: getPack("surprise-bill")!, country: "US",
+    additionalDocuments: [{ id: "receipt-40", role: "customer-record", label: "Receipt", text: "Example charge USD 40 on 2026-10-08 for TX-1842." }],
+  });
+  assert.equal(result.facts.amount, 50);
+  assert.equal(result.factEvidence.amount?.documentId, "original-bill-7");
+  assert.ok(result.conflicts.some(conflict => conflict.includes("Original bill [original-bill-7]") && conflict.includes("[receipt-40]") && conflict.includes("Receipt")));
+  assert.ok(result.warnings.some(warning => warning.includes("Original bill [original-bill-7]") && warning.includes("Receipt [receipt-40]")));
+});
+
+test("a previous company reply never supplies missing customer facts", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  let companyReplyWasExtracted = false;
+  global.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body));
+    const prompt = String(body.messages[1].content);
+    if (prompt.includes("Extract only stated facts") && prompt.includes("USD 40")) companyReplyWasExtracted = true;
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ company: "Example", amount: null, currency: null }) } }] });
+  };
+  const result = await runPipeline({
+    documentText: "A bill from Example.", pack: getPack("surprise-bill")!, country: "US",
+    additionalDocuments: [{ id: "reply-40", role: "previous-company-reply", label: "Company reply", text: "USD 40" }],
+  });
+  assert.equal(result.facts.amount, null);
+  assert.equal(result.facts.currency, null);
+  assert.equal(companyReplyWasExtracted, false);
+});
+
+test("a supporting amount with a different currency cannot be paired with the primary currency", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  const outputs = [
+    { company: "Example", amount: null, currency: "INR" },
+    { company: null, amount: 40, currency: "USD" },
+  ];
+  global.fetch = async () => Response.json({ choices: [{ message: { content: JSON.stringify(outputs.shift() ?? { company: null, amount: null, currency: null }) } }] });
+  const result = await runPipeline({
+    documentText: "Example invoice amount is not stated; INR is the billing currency.", pack: getPack("surprise-bill")!, country: "IN",
+    additionalDocuments: [{ id: "receipt-usd", role: "customer-record", label: "Receipt", text: "USD 40" }],
+  });
+  assert.equal(result.facts.currency, "INR");
+  assert.equal(result.facts.amount, null);
+  assert.equal(result.compensation.disputedAmount, undefined);
+  assert.ok(result.warnings.some(warning => /currency/i.test(warning)));
+});
+
+test("a supporting currency cannot be paired with an uncategorized primary amount", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  const outputs = [
+    { company: "Example", amount: 40, currency: null },
+    { company: null, amount: null, currency: "EUR" },
+  ];
+  global.fetch = async () => Response.json({ choices: [{ message: { content: JSON.stringify(outputs.shift() ?? { company: null, amount: null, currency: null }) } }] });
+  const result = await runPipeline({
+    documentText: "Example invoice shows 40, but does not state a currency.", pack: getPack("surprise-bill")!, country: "US",
+    additionalDocuments: [{ id: "receipt-eur", role: "customer-record", label: "Receipt", text: "EUR" }],
+  });
+  assert.equal(result.facts.amount, 40);
+  assert.equal(result.facts.currency, null);
+  assert.equal(result.compensation.disputedAmount, undefined);
+  assert.ok(result.warnings.some(warning => /kept separate/i.test(warning)));
+});
+
+test("later supporting records cite the earlier record that supplied an existing fact and currency", async () => {
+  process.env.NEBIUS_API_KEY = "test";
+  delete process.env.TAVILY_API_KEY;
+  const extracts = new Map([
+    ["Primary invoice", { company: "Example", amount: null, currency: null }],
+    ["Receipt A", { company: null, amount: 40, currency: "USD" }],
+    ["Receipt B", { company: null, amount: 50, currency: "EUR" }],
+  ]);
+  global.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body));
+    const prompt = String(body.messages[1].content);
+    if (!prompt.includes("Extract only stated facts")) return Response.json({ choices: [{ message: { content: JSON.stringify({ findings: [], unverified: [], unanswered: [], conflicts: [] }) } }] });
+    const name = [...extracts.keys()].find(candidate => prompt.includes(candidate));
+    const facts = name ? extracts.get(name) : undefined;
+    return Response.json({ choices: [{ message: { content: JSON.stringify(facts ?? { company: null, amount: null, currency: null }) } }] });
+  };
+  const result = await runPipeline({
+    documentText: "Primary invoice.", primaryDocumentId: "invoice-original", primaryDocumentLabel: "Original invoice",
+    pack: getPack("surprise-bill")!, country: "US",
+    additionalDocuments: [
+      { id: "receipt-a", role: "customer-record", label: "Receipt A", text: "Receipt A: USD 40" },
+      { id: "receipt-b", role: "customer-record", label: "Receipt B", text: "Receipt B: EUR 50" },
+    ],
+  });
+  assert.equal(result.facts.amount, 40);
+  assert.equal(result.factEvidence.amount?.documentId, "receipt-a");
+  assert.equal(result.factEvidence.currency?.documentId, "receipt-a");
+  const amountWarning=result.warnings.find(warning => warning.includes("Receipt A [receipt-a]") && warning.includes("Receipt B [receipt-b]") && /amount/i.test(warning));
+  const currencyWarning=result.warnings.find(warning => warning.includes("Receipt A [receipt-a]") && warning.includes("Receipt B [receipt-b]") && /currency/i.test(warning));
+  assert.ok(amountWarning);
+  assert.ok(currencyWarning);
+  assert.doesNotMatch(amountWarning,/primary document|primary value/i);
+  assert.doesNotMatch(currencyWarning,/primary document|primary value/i);
+  const amountQuestion=result.unanswered.find(question => question.includes("Receipt A [receipt-a]") && question.includes("Receipt B [receipt-b]") && /amount/i.test(question));
+  const currencyQuestion=result.unanswered.find(question => question.includes("Receipt A [receipt-a]") && question.includes("Receipt B [receipt-b]") && /currency/i.test(question));
+  assert.ok(amountQuestion);
+  assert.ok(currencyQuestion);
+  assert.doesNotMatch(amountQuestion,/primary document|primary value/i);
+  assert.doesNotMatch(currencyQuestion,/primary document|primary value/i);
 });
